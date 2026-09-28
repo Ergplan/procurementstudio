@@ -1,5 +1,5 @@
 // Server-only configuration. Keys never reach the browser. Read at request time.
-const KEY_NAMES = ["OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_SECRET_KEY"];
+const KEY_NAMES = ["OPENAI_API_KEY", "OPENAI_API_KEY1", "OPENAI_KEY", "OPENAI_SECRET_KEY"];
 function findKey() {
   for (const n of KEY_NAMES) {
     const v = (process.env[n] || "").trim().replace(/^["']|["']$/g, "");
