@@ -24,7 +24,7 @@ function useAi<T>(fn: (signal: AbortSignal, onText: (t: string) => void) => Prom
 export default function AiPanel({ kind, asset: a, onClose }: { kind: AiKind; asset: Asset; onClose: () => void }) {
   const S = useStudio(); const ok = !!S.health?.text;
   const c = useMemo(() => compute(a, S.M), [a, S.M]);
-  const ctx = useMemo(() => aiContext(a, S.M, S.disc), [a, S.M, S.disc]);
+  const ctx = useMemo(() => aiContext(a, S.M, S.disc, S.reviews), [a, S.M, S.disc, S.reviews]);
   const web = !!S.health?.web;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, []);
@@ -47,8 +47,8 @@ Data: ${JSON.stringify({ capacity_rule: "price × (required/offered)^" + a.scale
     if (kind === "homog") return llmJson(`You are a senior process/procurement engineer for an Indian snacks & bhujia manufacturer. Homogenize the three bids for "${name}" to ONE common specification that fits the requirement ("${a.req.text}"), then choose the right BoQ mix: for each line pick the vendor whose offered spec best meets the common spec at a sensible price (not always cheapest; never a "not quoted" cell; prefer one vendor where interfaces matter).
 Reply with ONLY JSON: {"common_spec":[{"parameter":"","value":"","why":""}],"mix":[{"row_id":"","vendor":"exact vendor name","reason":"max 14 words"}],"single_source_advice":"one sentence","asks":["max 3 re-quote asks"]}
 4-6 common_spec items; one mix entry per BoQ row. Data: ${JSON.stringify(ctx)}`, { signal }).then(need("mix"));
-    return llmJson(`You advise the CXO of an Indian snacks & bhujia manufacturer on which vendor to award "${name}" at ${S.M.factory}. Weigh normalized price 35%, technical fit 30%, reputation & customer-flagged issues 20%, delivery & commercial risk 15%. Stored vendor intel was web-researched on ${RESEARCH_DATE}.${web ? " Use web search now to check each vendor's recent Indian customer reviews, complaints, litigation or quality issues; include URLs in sources." : ""} Say when evidence is thin.
-Reply with ONLY JSON: {"vendor":"exact name","confidence":"High|Medium|Low","headline":"max 22 words","scorecard":[{"vendor":"","price":1-5,"technical":1-5,"reputation":1-5,"delivery_risk":1-5,"weighted":0-5}],"why":["3 bullets"],"risks":["2-3"],"negotiate":["2-3 levers with ₹ targets"],"conditions":["2-3 clauses"],"sources":[{"title":"","url":""}]}
+    return llmJson(`You advise the CXO of an Indian snacks & bhujia manufacturer on which vendor to award "${name}" at ${S.M.factory}. Weigh normalized price 30%, technical fit 25%, track record with us 20% (track_record_with_us: quality of similar past work, warranties honoured, plant satisfaction in annual reviews; a new vendor scores 3 by default, not zero), market reputation & customer-flagged issues 10%, delivery & commercial risk 15%. Stored vendor intel was web-researched on ${RESEARCH_DATE}.${web ? " Use web search now to check each vendor's recent Indian customer reviews, complaints, litigation or quality issues; include URLs in sources." : ""} Say when evidence is thin.
+Reply with ONLY JSON: {"vendor":"exact name","confidence":"High|Medium|Low","headline":"max 22 words","scorecard":[{"vendor":"","price":1-5,"technical":1-5,"track_record":1-5,"reputation":1-5,"delivery_risk":1-5,"weighted":0-5}],"why":["3 bullets"],"risks":["2-3"],"negotiate":["2-3 levers with ₹ targets"],"conditions":["2-3 clauses"],"sources":[{"title":"","url":""}]}
 (delivery_risk 5 = lowest risk). Data: ${JSON.stringify(ctx)}`, { signal, web }).then(need("vendor"));
   }, ok && kind !== "norm" ? true : ok);
 
@@ -123,11 +123,11 @@ function Verdict({ r, web }: { r: any; web: boolean }) {
   const src = (r.sources || []).filter((s: any) => /^https?:/.test(s?.url || "")).slice(0, 10);
   return (<>
     <div className="verdict-top"><div style={{ flex: 1, minWidth: 240 }}><span className="eyebrow">Recommended award</span><div className="pick">{r.vendor}</div><p style={{ margin: "6px 0 0" }}>{r.headline}</p></div><span className={"chip " + (r.confidence === "High" ? "good" : r.confidence === "Low" ? "bad" : "warn")}>{r.confidence} confidence</span></div>
-    <div className="scroll"><table className="score"><thead><tr><th>Vendor</th><th>Price 35%</th><th>Technical 30%</th><th>Reputation 20%</th><th>Delivery risk 15%</th><th>Weighted</th></tr></thead><tbody>
-      {(r.scorecard || []).map((s: any, i: number) => <tr key={i}><td><b>{s.vendor}</b></td><td><Pips n={+s.price} /></td><td><Pips n={+s.technical} /></td><td><Pips n={+s.reputation} /></td><td><Pips n={+s.delivery_risk} /></td><td className="num"><b>{s.weighted}</b></td></tr>)}
+    <div className="scroll"><table className="score"><thead><tr><th>Vendor</th><th>Price 30%</th><th>Technical 25%</th><th>Track record 20%</th><th>Reputation 10%</th><th>Delivery risk 15%</th><th>Weighted</th></tr></thead><tbody>
+      {(r.scorecard || []).map((s: any, i: number) => <tr key={i}><td><b>{s.vendor}</b></td><td><Pips n={+s.price} /></td><td><Pips n={+s.technical} /></td><td><Pips n={+s.track_record} /></td><td><Pips n={+s.reputation} /></td><td><Pips n={+s.delivery_risk} /></td><td className="num"><b>{s.weighted}</b></td></tr>)}
     </tbody></table></div>
     <div className="two prose" style={{ marginTop: 14 }}><div><h4>Why</h4>{ul(r.why)}<h4>Risks</h4>{ul(r.risks)}</div><div><h4>Negotiate</h4>{ul(r.negotiate)}<h4>Contract conditions</h4>{ul(r.conditions)}</div></div>
     {src.length > 0 && <><h4 className="eyebrow" style={{ margin: "12px 0 6px" }}>Live web sources</h4><div className="src">{src.map((s: any, i: number) => <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" style={{ marginRight: 10 }}>{s.title || s.url}</a>)}</div></>}
-    <p className="note">Reputation scores draw on stored vendor intel{web ? " plus a live web search just now" : ""}. Verify with reference customers before award.</p>
+    <p className="note">Track record comes from our own annual reviews; reputation draws on stored vendor intel{web ? " plus a live web search just now" : ""}. Verify with reference customers before award.</p>
   </>);
 }

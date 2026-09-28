@@ -58,6 +58,31 @@ Open **AI Proc Advisory** (bottom right), tap the mic and allow the microphone. 
 
 It moves the screen for you using Realtime function calls: `open_asset`, `show_part`, `walkthrough`, `set_view` and `go_to_site`. It reads the Studio's data with `get_asset` and `get_portfolio`. When you type while voice is live, the text goes into the same session. When voice is off, typed questions use OpenAI text with web search.
 
+### The screen follows the conversation
+
+When the advisor, or you, names a package, a BoQ part, a vendor or a section, the page scrolls to it and highlights it:
+
+- **Naming a package** opens it. Saying "the fryer bids", for example, opens the fryer package.
+- **Naming a part** selects it in the 3D view, brings up the part inspector and scrolls to it.
+- **Naming a vendor** highlights that vendor's card. If you're discussing warranties, satisfaction or past work, it highlights the vendor's track-record card instead.
+
+The advisor can also do this on purpose with the `focus` tool (vendors, walkthrough, tech sheet, a BoQ row, analysis, track record, intel, drawing). It can open a brief, normalization, homogenized spec or verdict with `run_analysis`. The **Follow** button in the advisor header turns auto-scrolling on or off.
+
+## Vendor track record
+
+Each package has a track-record section. It shows each vendor's past work with the client:
+
+- how many jobs they've done for you, and how many were similar to this one;
+- quality of that work;
+- warranty claims honoured;
+- the satisfaction score plant members give in the annual review.
+
+These roll up into one score from 0 to 100: quality counts for 40%, warranties honoured for 30% and satisfaction for 30%. Recent years count for more. A vendor with no past work is marked **New vendor**.
+
+Plant members add reviews with **Add annual review**. The score feeds the AI verdict at 20% of the weighting. The other weights are price 30%, technical fit 25%, market reputation 10% and delivery risk 15%.
+
+The seed history is illustrative. Reviews you add are saved in the browser. To share reviews across users, you'll need a database (for example Vercel Postgres).
+
 ### How the voice session works
 
 1. The browser POSTs to `/api/realtime/session`.
@@ -79,6 +104,9 @@ components/AssetView.tsx            Vendor cards, BoQ table, market prices, inte
 components/AiPanel.tsx              Brief · Normalize · Homogenize · Verdict
 lib/data.ts                         Packages, BoQ rows, vendors, intel, part notes, tech sheets
 lib/calc.ts                         Normalization maths and AI data packs
+lib/history.ts                      Vendor track record with the client + scoring
+lib/focus.ts                        Scroll/highlight + voice follower (matches parts, vendors, packages)
+components/VendorHistory.tsx        Track-record section and annual review form
 ```
 
 ## Settings (`.env.local` locally, Environment Variables on Vercel)

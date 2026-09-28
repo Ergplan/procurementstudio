@@ -1,4 +1,5 @@
 import { ASSETS, INTEL, TECH, PARTS, SRC, RESEARCH_DATE, type Asset, type Cell, type Master, type Row, type Vendor } from "./data";
+import { mergedHistory, trackScore, type Review } from "./history";
 
 export type Disc = Record<string, { lo: number; hi: number; basis?: string; date: string; url?: string; stitle?: string }>;
 export type RowO = { id: string; item: string; unit: string; gst: number; q: Record<string, Cell>; bench: any; ref?: string };
@@ -55,7 +56,12 @@ export function compute(a: Asset, M: Master): Comp {
 }
 
 // ---- compact data packs for the AI
-export function aiContext(a: Asset, M: Master, disc: Disc) {
+export function trackFor(name: string, reviews: Record<string, Review[]> = {}) {
+  const h = mergedHistory(name, reviews), t = trackScore(h);
+  if (!t) return { past_work_with_us: "none (new vendor)" };
+  return { past_work_with_us: h.projects.map(p => `${p.year}: ${p.work}`), score_0_100: t.score, quality_of_similar_work_5: +t.quality.toFixed(1), warranties_honoured: `${t.honored}/${t.claims}`, plant_satisfaction_10: +t.satisfaction.toFixed(1), satisfaction_trend: t.trend > 0.2 ? "improving" : t.trend < -0.2 ? "declining" : "steady", review_notes: h.reviews.filter(r => r.note).map(r => `${r.year}: ${r.note}`) };
+}
+export function aiContext(a: Asset, M: Master, disc: Disc, reviews: Record<string, Review[]> = {}) {
   const c = compute(a, M);
   return {
     factory: M.factory, client: M.client + " (snacks & bhujia manufacturer, India)", asset: aName(a, M), requirement: a.req.text,
@@ -63,14 +69,14 @@ export function aiContext(a: Asset, M: Master, disc: Disc) {
     assumptions: a.lifecycle ? (a.lifecycle.type === "fuel" ? { fuel_price_per_t: M.fuelPrice, gcv: M.gcv, hours: M.hours, load: M.load, years: M.years } : { tariff: M.tariff, years: M.years }) : undefined,
     vendors: a.vendors.map(v => {
       const o = c.out[v.key];
-      return { vendor: v.name, offer: v.offer, capacity: v.cap + " " + a.capUnit, efficiency_pct: v.eff, yield_kwh_per_kwp: v.yield, lead: v.lead, warranty: v.warranty, payment_terms: v.payment, quoted_ex_gst: Math.round(o.quoted), incl_gst: Math.round(o.gross), not_quoted: o.gaps.map(g => g.item), per_unit: +o.perUnit.toFixed(2) + " " + a.capUnitLabel, normalized_total: Math.round(o.norm), intel: INTEL[v.name] ? { rating: INTEL[v.name].rating, flags: INTEL[v.name].flags, strengths: INTEL[v.name].plus } : null };
+      return { vendor: v.name, offer: v.offer, capacity: v.cap + " " + a.capUnit, efficiency_pct: v.eff, yield_kwh_per_kwp: v.yield, lead: v.lead, warranty: v.warranty, payment_terms: v.payment, quoted_ex_gst: Math.round(o.quoted), incl_gst: Math.round(o.gross), not_quoted: o.gaps.map(g => g.item), per_unit: +o.perUnit.toFixed(2) + " " + a.capUnitLabel, normalized_total: Math.round(o.norm), intel: INTEL[v.name] ? { rating: INTEL[v.name].rating, flags: INTEL[v.name].flags, strengths: INTEL[v.name].plus } : null, track_record_with_us: trackFor(v.name, reviews) };
     }),
     boq: c.rows.map(r => { const b = benchFor(r, disc); return { id: r.id, item: r.item, unit: r.unit, quotes: Object.fromEntries(a.vendors.map(v => [v.name, r.q[v.key] ? { spec: r.q[v.key]![0], qty: r.q[v.key]![1], rate: r.q[v.key]![2] } : "not quoted"])), market: b ? { lo: b.lo, hi: b.hi, source: b.kind } : null }; }),
     tech_sheet: (TECH[a.id] || []).map(t => ({ parameter: t[0], requirement: t[1], offers: Object.fromEntries(a.vendors.map(v => [v.name, `${t[2][v.key]} (${t[3][v.key]})`])) })),
   };
 }
-export function portfolio(M: Master) {
-  return ASSETS.map(a => { const c = compute(a, M); return { id: a.id, asset: aName(a, M), requirement: a.req.text, vendors: a.vendors.map(v => { const o = c.out[v.key]; return { vendor: v.name, offer: v.offer, quoted_ex_gst: Math.round(o.quoted), normalized: Math.round(o.norm), rank_quoted: c.byQuoted.indexOf(v.key) + 1, rank_normalized: c.byNorm.indexOf(v.key) + 1, not_quoted: o.gaps.map(g => g.item), flags: INTEL[v.name]?.flags }; }) }; });
+export function portfolio(M: Master, reviews: Record<string, Review[]> = {}) {
+  return ASSETS.map(a => { const c = compute(a, M); return { id: a.id, asset: aName(a, M), requirement: a.req.text, vendors: a.vendors.map(v => { const o = c.out[v.key]; return { vendor: v.name, offer: v.offer, quoted_ex_gst: Math.round(o.quoted), normalized: Math.round(o.norm), rank_quoted: c.byQuoted.indexOf(v.key) + 1, rank_normalized: c.byNorm.indexOf(v.key) + 1, not_quoted: o.gaps.map(g => g.item), flags: INTEL[v.name]?.flags, track_score: trackScore(mergedHistory(v.name, reviews))?.score ?? "new vendor" }; }) }; });
 }
 export function partInfo(a: Asset, pid: string) {
   const r = a.rows.find(x => x[0] === pid); if (!r) return null;

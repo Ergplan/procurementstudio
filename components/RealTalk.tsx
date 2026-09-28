@@ -5,6 +5,7 @@ import { ASSETS, RESEARCH_DATE } from "@/lib/data";
 import { aName, aiContext, assetById, partInfo, portfolio } from "@/lib/calc";
 import { llm, errText, type Turn } from "@/lib/ai";
 import Markdown from "./Markdown";
+import { flash, SECTIONS, makeMatcher, assetFromText } from "@/lib/focus";
 
 type Msg = { id: number; role: "user" | "bot" | "sys" | "tool"; text: string; voice?: boolean };
 type VState = "off" | "connecting" | "listening" | "user" | "thinking" | "speaking";
@@ -16,6 +17,8 @@ const TOOLS = [
   { type: "function", name: "set_view", description: "Switch the 3D camera to a named view of the open asset, e.g. 'Walk inside furnace', 'Along the smoke tubes', 'Top platform', 'Overview'.", parameters: { type: "object", properties: { view: { type: "string" } }, required: ["view"] } },
   { type: "function", name: "get_asset", description: "Full data for one package: requirement, BoQ lines with every vendor's spec/qty/rate, market prices, normalized totals, tech sheet (incl. design pressure for the boiler) and vendor intel.", parameters: { type: "object", properties: { asset_id: { type: "string", enum: ASSETS.map(a => a.id) } }, required: ["asset_id"] } },
   { type: "function", name: "get_portfolio", description: "Summary of all six packages: vendors, quoted and normalized totals, ranks, scope gaps and risk flags.", parameters: { type: "object", properties: {} } },
+  { type: "function", name: "focus", description: "Scroll the screen to and highlight what you are talking about. target: vendors | walkthrough | tech_sheet | boq | boq_row | analysis | track_record | vendor_intel | drawing. For boq_row give part_id; to highlight one vendor give vendor_name (works with vendors, track_record, vendor_intel).", parameters: { type: "object", properties: { target: { type: "string", enum: ["vendors", "walkthrough", "tech_sheet", "boq", "boq_row", "analysis", "track_record", "vendor_intel", "drawing"] }, part_id: { type: "string" }, vendor_name: { type: "string" } }, required: ["target"] } },
+  { type: "function", name: "run_analysis", description: "Run and show an analysis panel for the open asset: brief (CXO pricing brief), normalize (like-for-like comparison table), homogenize (common spec + best BoQ mix) or verdict (award recommendation).", parameters: { type: "object", properties: { kind: { type: "string", enum: ["brief", "normalize", "homogenize", "verdict"] } }, required: ["kind"] } },
   { type: "function", name: "go_to_site", description: "Return to the isometric factory site view.", parameters: { type: "object", properties: {} } },
 ];
 
@@ -31,6 +34,34 @@ export default function RealTalk() {
   const rtc = useRef<any>(null), idc = useRef(1), cur = useRef<{ id: number; text: string } | null>(null), turns = useRef<Turn[]>([]), textCtl = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const Sref = useRef(S); Sref.current = S;
+  const [follow, setFollow] = useState(true); const followRef = useRef(true); followRef.current = follow;
+  const lastFocus = useRef(""), followT = useRef<any>(null);
+  const focusTarget = (target: string, partId?: string, vendorName?: string) => {
+    const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null; if (!a) return false;
+    const vk = vendorName ? a.vendors.find(v => v.name.toLowerCase().includes(String(vendorName).toLowerCase().split(" ")[0]))?.key : undefined;
+    if (target === "boq_row" && partId) return flash(`[data-focus="row-${partId}"]`);
+    if (target === "tech_sheet") { s.setSel(null); return flash('[data-focus="sec-walk"]', "start"); }
+    if (vk && target === "track_record") return flash(`[data-focus="hist-${vk}"]`);
+    if (vk && target === "vendor_intel") return flash(`[data-focus="intel-${vk}"]`);
+    if (vk && target === "vendors") return flash(`[data-focus="vendor-${vk}"]`);
+    const sec = SECTIONS[target]; return sec ? flash(`[data-focus="${sec}"]`, target === "walkthrough" || target === "analysis" ? "start" : "center") : false;
+  };
+  // Passive follower: when the advisor (or the user) names a part, vendor or package, bring it on screen.
+  const followText = (text: string, who: "bot" | "user") => {
+    if (!followRef.current) return;
+    clearTimeout(followT.current);
+    followT.current = setTimeout(() => {
+      const s = Sref.current;
+      if (who === "user") { const id = assetFromText(text); if (id && id !== s.assetId && !/all (six|the) packages|portfolio|across/i.test(text)) { s.ctrl.current.openAsset(id); lastFocus.current = "asset-" + id; return; } }
+      if (!s.assetId) return;
+      const m = makeMatcher(assetById(s.assetId))(text.slice(-260));
+      let key = "", run: (() => void) | null = null;
+      if (m.part) { key = "part-" + m.part; run = () => { s.ctrl.current.showPart?.(m.part!); flash('[data-focus="sec-walk"]', "start"); }; }
+      else if (m.vendor) { key = `vendor-${m.vendor}-${m.about || ""}`; run = () => flash(m.about === "history" ? `[data-focus="hist-${m.vendor}"]` : m.about === "intel" ? `[data-focus="intel-${m.vendor}"]` : `[data-focus="vendor-${m.vendor}"]`); }
+      else if (m.about === "history") { key = "sec-history"; run = () => flash('[data-focus="sec-history"]', "start"); }
+      if (run && key !== lastFocus.current) { lastFocus.current = key; run(); }
+    }, who === "user" ? 150 : 450);
+  };
 
   const push = (m: Omit<Msg, "id">) => { const id = idc.current++; setMsgs(x => [...x, { ...m, id }]); return id; };
   const patch = (id: number, text: string) => setMsgs(x => x.map(m => (m.id === id ? { ...m, text } : m)));
@@ -40,7 +71,8 @@ export default function RealTalk() {
     const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null;
     return `You are AI Proc Advisory, the spoken procurement advisor inside Joulewise Procurement Studio, talking with the CXO and procurement team of ${s.M.client} (${s.M.factory}, ${s.M.location}), an Indian snacks & bhujia manufacturer.
 Speak in short, clear Indian-English sentences (2-4 sentences per turn unless asked for detail). Use ₹ lakh and crore. Be numeric and decisive; say when evidence is thin.
-You can drive the screen: open_asset, show_part, walkthrough, set_view, go_to_site. When the user asks to see or go inside something ("take me inside the boiler", "show me the economiser", "next part"), call the tools first, then explain what is on screen. Always call get_asset or get_portfolio before quoting numbers you don't already have.
+You can drive the screen: open_asset, show_part, walkthrough, set_view, go_to_site. When the user asks to see or go inside something ("take me inside the boiler", "show me the economiser", "next part"), call the tools first, then explain what is on screen. Whenever you move to a specific item, vendor or section in your answer (a BoQ line, a vendor's quote, the track record, the verdict), call show_part or focus so the screen follows you. Use run_analysis when the user asks for a brief, normalization, homogenized spec or a verdict.
+Each vendor has a track record with this client (past similar work, warranties honoured, annual plant satisfaction); weigh it alongside price and specs, and say when a vendor is new to us. Always call get_asset or get_portfolio before quoting numbers you don't already have.
 You also answer any question on the procurement process: RFQ, techno-commercial evaluation, L1 vs normalized N1, reverse auction, negotiation, PO terms (advance, ABG/PBG, LDs, warranty), IBR/CEIG/pollution-board approvals, GST and input tax credit, FAT/SAT, commissioning.
 Vendor bids are illustrative demo data; market benchmarks and vendor intel were web-researched on ${RESEARCH_DATE}.
 Packages: ${ASSETS.map(x => `${x.id} = ${aName(x, s.M)} (${x.req.capLabel})`).join("; ")}.
@@ -55,8 +87,10 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
       if (name === "show_part") { if (!s.assetId) return { error: "open an asset first" }; const ok = ctrl.showPart?.(args.part_id); if (!ok) return { error: "unknown part" }; document.querySelector(".walk-card")?.scrollIntoView({ behavior: "smooth", block: "start" }); return partInfo(assetById(s.assetId), args.part_id); }
       if (name === "walkthrough") { if (!s.assetId) return { error: "open an asset first" }; const t = ctrl.tour?.(args.step); if (!t) return { error: "walkthrough not ready" }; const pid = t.order[t.idx]; document.querySelector(".walk-card")?.scrollIntoView({ behavior: "smooth", block: "start" }); return { stop: t.idx + 1, of: t.order.length, ...partInfo(assetById(s.assetId), pid) }; }
       if (name === "set_view") { const v = ctrl.setView?.(String(args.view || "")); return v ? { ok: true, view: v } : { error: "views available: " + (ctrl.views?.() || []).join(", ") }; }
-      if (name === "get_asset") { const a = ASSETS.find(x => x.id === args.asset_id); return a ? aiContext(a, s.M, s.disc) : { error: "unknown asset" }; }
-      if (name === "get_portfolio") return portfolio(s.M);
+      if (name === "get_asset") { const a = ASSETS.find(x => x.id === args.asset_id); return a ? aiContext(a, s.M, s.disc, s.reviews) : { error: "unknown asset" }; }
+      if (name === "get_portfolio") return portfolio(s.M, s.reviews);
+      if (name === "focus") { if (!s.assetId) return { error: "open an asset first" }; lastFocus.current = ""; return focusTarget(String(args.target), args.part_id, args.vendor_name) ? { ok: true } : { error: "nothing to focus for that target" }; }
+      if (name === "run_analysis") { if (!s.assetId) return { error: "open an asset first" }; const k = ({ brief: "brief", normalize: "norm", homogenize: "homog", verdict: "verdict" } as any)[args.kind]; if (!k) return { error: "unknown kind" }; ctrl.runAi?.(k); return { ok: true, note: "The panel is now generating on screen; summarise it briefly while it loads, or ask get_asset for numbers." }; }
       if (name === "go_to_site") { ctrl.goSite(); return { ok: true }; }
     } catch (e: any) { return { error: String(e?.message || e) }; }
     return { error: "unknown tool" };
@@ -69,11 +103,11 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
       case "input_audio_buffer.speech_stopped": setVs("thinking"); break;
       case "output_audio_buffer.started": setVs("speaking"); break;
       case "output_audio_buffer.stopped": case "output_audio_buffer.cleared": setVs("listening"); break;
-      case "conversation.item.input_audio_transcription.completed": if (e.transcript?.trim()) push({ role: "user", text: e.transcript.trim(), voice: true }); break;
+      case "conversation.item.input_audio_transcription.completed": if (e.transcript?.trim()) { push({ role: "user", text: e.transcript.trim(), voice: true }); followText(e.transcript, "user"); } break;
       case "response.output_audio_transcript.delta": case "response.output_text.delta":
         if (!cur.current) cur.current = { id: push({ role: "bot", text: "" }), text: "" };
-        cur.current.text += e.delta || ""; patch(cur.current.id, cur.current.text); break;
-      case "response.output_audio_transcript.done": case "response.output_text.done": cur.current = null; break;
+        cur.current.text += e.delta || ""; patch(cur.current.id, cur.current.text); followText(cur.current.text, "bot"); break;
+      case "response.output_audio_transcript.done": case "response.output_text.done": cur.current = null; lastFocus.current = ""; break;
       case "response.done": {
         const calls = (e.response?.output || []).filter((o: any) => o.type === "function_call");
         if (!calls.length) break;
@@ -122,23 +156,24 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
     setVs("off"); setLevel(0); setMuted(false);
   };
   useEffect(() => () => stop(), []); // eslint-disable-line
+  useEffect(() => { document.body.classList.toggle("adv-open", open); }, [open]);
   const toggleMute = () => { const r = rtc.current; if (!r) return; const m = !muted; r.mic.getAudioTracks().forEach((t: MediaStreamTrack) => (t.enabled = !m)); setMuted(m); };
 
   // keep the live session aware of what's on screen
   useEffect(() => { rtc.current?.send({ type: "session.update", session: { type: "realtime", instructions: instructions() } }); }, [S.assetId, S.sel, S.M]); // eslint-disable-line
 
   const ask = async (q: string) => {
-    setOpen(true); push({ role: "user", text: q });
+    setOpen(true); push({ role: "user", text: q }); followText(q, "user");
     const r = rtc.current;
     if (r && r.dc.readyState === "open") { r.send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: q }] } }); r.send({ type: "response.create" }); return; }
     if (!Sref.current.health?.text) { push({ role: "sys", text: "The server can't see OPENAI_API_KEY yet. See the note at the top of this panel." }); return; }
     textCtl.current?.abort(); const ctl = new AbortController(); textCtl.current = ctl; setBusy(true);
     const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null;
-    const data = { portfolio: portfolio(s.M), focus_asset: a ? aiContext(a, s.M, s.disc) : null, focus_part: a && s.sel ? partInfo(a, s.sel) : null };
+    const data = { portfolio: portfolio(s.M, s.reviews), focus_asset: a ? aiContext(a, s.M, s.disc, s.reviews) : null, focus_part: a && s.sel ? partInfo(a, s.sel) : null };
     turns.current.push({ role: "user", content: q });
     const id = push({ role: "bot", text: "" });
     try {
-      const t = await llm([{ role: "user", content: instructions() + "\nYou are answering in text now; keep it under 170 words and cite web sources as links if you search.\nStudio data: " + JSON.stringify(data) }, ...turns.current.slice(-10)], { web: !!s.health?.web, signal: ctl.signal, onText: x => patch(id, x) });
+      const t = await llm([{ role: "user", content: instructions() + "\nYou are answering in text now; keep it under 170 words and cite web sources as links if you search.\nStudio data: " + JSON.stringify(data) }, ...turns.current.slice(-10)], { web: !!s.health?.web, signal: ctl.signal, onText: x => { patch(id, x); followText(x, "bot"); } });
       turns.current.push({ role: "assistant", content: t });
     } catch (e: any) { turns.current.pop(); patch(id, e?.code === "cancelled" ? "_Stopped._" : "⚠ " + errText(e)); }
     finally { setBusy(false); }
@@ -163,6 +198,7 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
             {live ? <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="2" fill="currentColor" /></svg> : <Mic />}
           </button>
           <div className="adv-title"><b>AI Proc Advisory</b><span>{stateText[vs]} · {onScreen}</span></div>
+          <button className={"adv-icon" + (follow ? " on" : "")} type="button" onClick={() => setFollow(!follow)} aria-pressed={follow} title="Scroll the screen to whatever the advisor is talking about">Follow</button>
           {live && <button className="adv-icon" type="button" onClick={toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"} title={muted ? "Unmute" : "Mute"}>{muted ? "Unmute" : "Mute"}</button>}
           <button className="adv-icon" type="button" onClick={() => setOpen(false)} aria-label="Minimise" title="Minimise">–</button>
         </header>
