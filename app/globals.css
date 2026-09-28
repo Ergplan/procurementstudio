@@ -328,4 +328,31 @@ table.tech{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0 10px}
 .setup{padding:12px 14px;font-size:12.5px;background:var(--warn-soft);color:var(--ink)}
 .setup code{font-family:var(--f-mono),monospace;font-size:12px}
 
-@media (min-width:1180px){body.rt-open .wrap{margin-right:440px}}
+
+/* AI Proc Advisory: compact dock that sits in the app like a card */
+.adv-pill{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;align-items:center;gap:8px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 14px 6px 6px;font:600 13px var(--f-body),sans-serif;cursor:pointer;box-shadow:var(--shadow)}
+.adv-pill:hover{border-color:var(--faint)}
+.adv-pill-dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:var(--bg)}
+.adv-pill-dot.live{background:var(--accent);color:#1a1205}
+.adv{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:45;width:min(360px,calc(100vw - 32px));max-height:min(540px,calc(100vh - 110px));display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.adv-h{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;border-bottom:1px solid var(--line2)}
+.adv-mic{position:relative;flex:none;width:36px;height:36px;border-radius:50%;border:0;display:grid;place-items:center;background:var(--ink);color:var(--bg);cursor:pointer}
+.adv-mic.live{background:var(--accent);color:#1a1205}
+.adv-mic.speaking{background:var(--steel);color:#fff}
+.adv-mic:disabled{opacity:.45;cursor:not-allowed}
+.adv-ring{position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--accent);opacity:0;transition:transform .08s linear,opacity .2s;pointer-events:none}
+.adv-mic.live .adv-ring,.adv-mic.speaking .adv-ring{opacity:.7}
+.adv-title{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.adv-title b{font:750 14px var(--f-display),sans-serif;font-stretch:90%}
+.adv-title span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adv-icon{flex:none;min-width:28px;height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font:600 12px var(--f-body),sans-serif;cursor:pointer}
+.adv-icon:hover{color:var(--ink);border-color:var(--line)}
+.adv .setup{padding:8px 12px;font-size:12px;line-height:1.45}
+.adv-log{flex:1;min-height:90px;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.adv-log .msg{font-size:13px;padding:7px 10px;border-radius:10px;max-width:94%}
+.adv-log .msg .prose p{margin:0 0 4px}
+.adv-chips{display:flex;gap:6px;padding:0 12px 8px;overflow-x:auto;scrollbar-width:none}
+.adv-chips .chip-btn{white-space:nowrap;font-size:11.5px;padding:4px 9px;flex:none}
+.adv-form{display:flex;gap:6px;padding:8px 10px 10px;border-top:1px solid var(--line2)}
+.adv-form input{flex:1;min-width:0;font:inherit;font-size:13px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink)}
+@media (max-width:520px){.adv{right:8px;left:8px;width:auto;bottom:8px;max-height:70vh}}

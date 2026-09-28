@@ -11,7 +11,7 @@ What it does:
 - Normalizes prices for scope gaps, capacity and lifecycle cost.
 - Suggests a common specification and the best mix of BoQ lines.
 - Gives an award verdict informed by live web research on vendors.
-- Includes **RealTalk**, a voice co-pilot on the **OpenAI Realtime API**.
+- Includes **AI Proc Advisory**, a voice advisor on the **OpenAI Realtime API**.
 
 ## Run it
 
@@ -45,9 +45,9 @@ How it works on Vercel:
 - Your key is only read on the server. The browser receives a temporary `ek_…` key per voice session.
 - The microphone needs HTTPS. That's automatic on Vercel, and `localhost` also works.
 
-## RealTalk voice
+## AI Proc Advisory (voice)
 
-Open **RealTalk** (bottom right), tap the orb and allow the microphone. Then just talk. You can interrupt it at any time.
+Open **AI Proc Advisory** (bottom right), tap the mic and allow the microphone. Then just talk. You can interrupt it at any time.
 
 - "Take me inside the boiler furnace."
 - "Show me the economiser. Which vendor's offer is best?"
@@ -56,7 +56,7 @@ Open **RealTalk** (bottom right), tap the orb and allow the microphone. Then jus
 - "Go back to the site and compare the packaging bids."
 - "What performance bank guarantee should we ask for in the PO?"
 
-RealTalk moves the screen for you using Realtime function calls: `open_asset`, `show_part`, `walkthrough`, `set_view` and `go_to_site`. It reads the Studio's data with `get_asset` and `get_portfolio`. When you type while voice is live, the text goes into the same session. When voice is off, typed questions use OpenAI text with web search.
+It moves the screen for you using Realtime function calls: `open_asset`, `show_part`, `walkthrough`, `set_view` and `go_to_site`. It reads the Studio's data with `get_asset` and `get_portfolio`. When you type while voice is live, the text goes into the same session. When voice is off, typed questions use OpenAI text with web search.
 
 ### How the voice session works
 
@@ -72,7 +72,7 @@ Your `OPENAI_API_KEY` never leaves the server.
 app/api/realtime/session/route.ts   Mints Realtime client secrets
 app/api/llm/route.ts                Streams OpenAI Responses (+ web_search) for briefs, verdicts, prices
 app/api/health/route.ts             Tells the UI what's configured
-components/RealTalk.tsx             Voice-first co-pilot (WebRTC, tools, transcript, mic meter)
+components/RealTalk.tsx             AI Proc Advisory: voice-first advisor (WebRTC, tools, transcript, mic meter)
 components/Walkthrough.tsx          3D walkthrough, guided tour, part inspector
 lib/walkEngine.ts                   Three.js wireframe models (every part = a BoQ row id)
 components/AssetView.tsx            Vendor cards, BoQ table, market prices, intel

@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { DEFAULT_MASTER, type Master } from "./data";
 import type { Disc } from "./calc";
 
-export type Health = { text: boolean; web: boolean; voice: boolean; textModel?: string; realtimeModel?: string } | null;
+export type Health = { text: boolean; web: boolean; voice: boolean; textModel?: string; realtimeModel?: string; host?: "vercel" | "local"; vercelEnv?: string | null; keyVar?: string | null; similarVars?: string[]; unreachable?: boolean } | null;
 // Imperative handles the voice agent uses to drive the UI.
 export type Ctrl = {
   openAsset: (id: string) => void; goSite: () => void;
@@ -30,7 +30,7 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const m = load("ps.master"); if (m) setMs({ ...DEFAULT_MASTER, ...m, names: { ...(m.names || {}) } });
     const d = load("ps.discovered"); if (d) setDiscS(d);
-    fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => setHealth({ text: false, web: false, voice: false }));
+    fetch("/api/health", { cache: "no-store" }).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(setHealth).catch(() => setHealth({ text: false, web: false, voice: false, unreachable: true }));
   }, []);
   const v = useMemo(() => ({ M, setM: (m: Master) => { setMs(m); save("ps.master", m); }, disc, setDisc: (d: Disc) => { setDiscS(d); save("ps.discovered", d); }, assetId, setAssetId: (id: string | null) => { setAssetId(id); setSel(null); }, sel, setSel, health, ctrl, rtAsk }), [M, disc, assetId, sel, health]);
   return <C.Provider value={v}>{children}</C.Provider>;

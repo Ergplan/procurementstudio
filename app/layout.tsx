@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "Joulewise Procurement Studio", description: "Capex bid evaluation with 3D equipment walkthroughs and RealTalk voice." };
+export const metadata: Metadata = { title: "Joulewise Procurement Studio", description: "Capex bid evaluation with 3D equipment walkthroughs and AI Proc Advisory voice." };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

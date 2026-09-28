@@ -59,7 +59,7 @@ Reply with ONLY JSON: {"vendor":"exact name","confidence":"High|Medium|Low","hea
       <div className="ai-body">
         {kind === "brief" && <div className="keynums"><div className="kv"><div className="k">L1 quoted</div><div className="v num">{money(l1.quoted)}</div><div className="note">{l1.v.name}</div></div><div className="kv"><div className="k">Best normalized</div><div className="v num">{money(n1.norm)}</div><div className="note">{n1.v.name}</div></div><div className="kv"><div className="k">Quote spread</div><div className="v num">{money(c.out[c.byQuoted[2]].quoted - l1.quoted)}</div></div><div className="kv"><div className="k">Market reference</div><div className="v num" style={{ fontSize: 13 }}>{a.assetBench ? money(a.assetBench.lo) + "–" + money(a.assetBench.hi) : "₹40–55/Wp EPC"}</div></div></div>}
         {kind === "norm" && <NormTable asset={a} />}
-        {!ok && <p className="note">AI isn't configured. Add <code>OPENAI_API_KEY</code> to <code>.env.local</code> and restart the app.</p>}
+        {!ok && <p className="note">AI isn't configured: the server can't see <code>OPENAI_API_KEY</code>. Open AI Proc Advisory for setup help.</p>}
         {(kind === "brief" || kind === "norm") && ok && (job.text ? <Markdown text={job.text} /> : !job.err && <div className="thinking"><i />Thinking…</div>)}
         {kind === "homog" && ok && (job.data ? <Homog asset={a} r={job.data} /> : !job.err && <div className="thinking"><i />Aligning specifications line by line…</div>)}
         {kind === "verdict" && ok && (job.data ? <Verdict r={job.data} web={web} /> : !job.err && <div className="thinking"><i />Weighing price, specs and vendor track record{web ? ", searching the web" : ""}…</div>)}

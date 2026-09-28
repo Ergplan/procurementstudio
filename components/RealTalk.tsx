@@ -22,7 +22,7 @@ const TOOLS = [
 export default function RealTalk() {
   const S = useStudio();
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, role: "bot", text: "I'm **RealTalk**, your voice co-pilot for this procurement. Tap the orb and talk to me: ask me to take you inside the boiler, compare vendors, or explain any BoQ line or procurement step." }]);
+  const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, role: "bot", text: "I'm your **AI Proc Advisory**. Tap the mic and talk, or type. I can take you inside the equipment, compare vendors, or explain any BoQ line or procurement step." }]);
   const [vs, setVs] = useState<VState>("off");
   const [level, setLevel] = useState(0);
   const [muted, setMuted] = useState(false);
@@ -38,7 +38,7 @@ export default function RealTalk() {
 
   const instructions = () => {
     const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null;
-    return `You are RealTalk, the spoken procurement co-pilot inside Joulewise Procurement Studio, talking with the CXO and procurement team of ${s.M.client} (${s.M.factory}, ${s.M.location}), an Indian snacks & bhujia manufacturer.
+    return `You are AI Proc Advisory, the spoken procurement advisor inside Joulewise Procurement Studio, talking with the CXO and procurement team of ${s.M.client} (${s.M.factory}, ${s.M.location}), an Indian snacks & bhujia manufacturer.
 Speak in short, clear Indian-English sentences (2-4 sentences per turn unless asked for detail). Use ₹ lakh and crore. Be numeric and decisive; say when evidence is thin.
 You can drive the screen: open_asset, show_part, walkthrough, set_view, go_to_site. When the user asks to see or go inside something ("take me inside the boiler", "show me the economiser", "next part"), call the tools first, then explain what is on screen. Always call get_asset or get_portfolio before quoting numbers you don't already have.
 You also answer any question on the procurement process: RFQ, techno-commercial evaluation, L1 vs normalized N1, reverse auction, negotiation, PO terms (advance, ABG/PBG, LDs, warranty), IBR/CEIG/pollution-board approvals, GST and input tax credit, FAT/SAT, commissioning.
@@ -122,7 +122,6 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
     setVs("off"); setLevel(0); setMuted(false);
   };
   useEffect(() => () => stop(), []); // eslint-disable-line
-  useEffect(() => { document.body.classList.toggle("rt-open", open); }, [open]);
   const toggleMute = () => { const r = rtc.current; if (!r) return; const m = !muted; r.mic.getAudioTracks().forEach((t: MediaStreamTrack) => (t.enabled = !m)); setMuted(m); };
 
   // keep the live session aware of what's on screen
@@ -132,7 +131,7 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
     setOpen(true); push({ role: "user", text: q });
     const r = rtc.current;
     if (r && r.dc.readyState === "open") { r.send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: q }] } }); r.send({ type: "response.create" }); return; }
-    if (!Sref.current.health?.text) { push({ role: "sys", text: "Add OPENAI_API_KEY to .env.local to use RealTalk." }); return; }
+    if (!Sref.current.health?.text) { push({ role: "sys", text: "The server can't see OPENAI_API_KEY yet. See the note at the top of this panel." }); return; }
     textCtl.current?.abort(); const ctl = new AbortController(); textCtl.current = ctl; setBusy(true);
     const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null;
     const data = { portfolio: portfolio(s.M), focus_asset: a ? aiContext(a, s.M, s.disc) : null, focus_part: a && s.sel ? partInfo(a, s.sel) : null };
@@ -147,39 +146,55 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
   S.rtAsk.current = ask;
 
   const a = S.assetId ? assetById(S.assetId) : null;
-  const stateText: Record<VState, React.ReactNode> = { off: <>Tap to talk</>, connecting: <>Connecting to OpenAI Realtime…</>, listening: <><b>Listening</b> · just speak</>, user: <><b>You're speaking</b></>, thinking: <><b>Thinking…</b></>, speaking: <><b>RealTalk is speaking</b> · talk to interrupt</> };
+  const stateText: Record<VState, string> = { off: "Tap the mic to talk", connecting: "Connecting…", listening: "Listening", user: "You're speaking", thinking: "Thinking…", speaking: "Speaking · talk to interrupt" };
   const live = vs !== "off" && vs !== "connecting";
-  const chips = a ? [`Take me inside the ${a.id === "boiler" ? "boiler furnace" : aName(a, S.M).toLowerCase()}`, "Start the walkthrough", `Which ${aName(a, S.M).toLowerCase()} bid should we award?`] : ["Take me inside the boiler", "Where is the biggest saving across all six packages?", "What's our timeline from RFQ to commissioning?"];
+  const onScreen = a ? `${aName(a, S.M)}${S.sel ? " › " + a.rows.find(r => r[0] === S.sel)?.[1] : ""}` : `Site view`;
+  const chips = a ? [a.id === "boiler" ? "Take me inside the furnace" : "Start the walkthrough", "Which bid should we award?", "What should we negotiate?"] : ["Take me inside the boiler", "Biggest saving across packages?", "RFQ to commissioning timeline"];
+  const Mic = () => <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" /></svg>;
   return (<>
-    {!open && <button className="rt-fab" type="button" onClick={() => setOpen(true)}><span className="rt-dot" style={live ? { background: "var(--good)" } : undefined} />RealTalk{live ? " · live" : ""}</button>}
+    {!open && <button className="adv-pill" type="button" onClick={() => setOpen(true)} aria-label="Open AI Proc Advisory">
+      <span className={"adv-pill-dot" + (live ? " live" : "")}><Mic /></span>AI Proc Advisory{live && <span className="note"> · {stateText[vs]}</span>}
+    </button>}
     {open && (
-      <aside className="rt" aria-label="RealTalk voice assistant">
-        <header className="rt-h">
-          <div><b>RealTalk</b><span className="note">OpenAI Realtime voice{S.health?.realtimeModel ? ` · ${S.health.realtimeModel}` : ""}</span></div>
-          <span className="sp" />
-          {live && <button className="btn sm" type="button" onClick={toggleMute}>{muted ? "Unmute mic" : "Mute mic"}</button>}
-          <button className="btn sm ghost" type="button" onClick={() => setOpen(false)}>Hide</button>
-        </header>
-        {S.health && !S.health.voice && <div className="setup">Voice needs an OpenAI key. Add <code>OPENAI_API_KEY=…</code> to <code>.env.local</code> and restart <code>npm run dev</code>.</div>}
-        <div className="rt-stage">
-          <button type="button" className={"orb" + (live ? " live" : "") + (vs === "speaking" ? " speaking" : "")} disabled={vs === "connecting" || !S.health?.voice} onClick={start} aria-label={live ? "End voice session" : "Start voice session"}>
-            <span className="ring" style={{ transform: `scale(${1 + (vs === "user" || vs === "listening" ? level * 0.35 : vs === "speaking" ? 0.12 : 0)})` }} />
-            {live ? "End" : vs === "connecting" ? "…" : "Talk"}
+      <aside className="adv" aria-label="AI Proc Advisory">
+        <header className="adv-h">
+          <button type="button" className={"adv-mic" + (live ? " live" : "") + (vs === "speaking" ? " speaking" : "")} disabled={vs === "connecting" || !S.health?.voice} onClick={start} aria-label={live ? "End voice session" : "Start voice session"} title={live ? "End voice" : "Talk"}>
+            <span className="adv-ring" style={{ transform: `scale(${1 + (vs === "user" || vs === "listening" ? level * 0.5 : vs === "speaking" ? 0.18 : 0)})` }} />
+            {live ? <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="2" fill="currentColor" /></svg> : <Mic />}
           </button>
-          <div className="rt-state">{stateText[vs]}</div>
-        </div>
-        <div className="rt-ctx"><span className="eyebrow">On screen</span> {a ? `${aName(a, S.M)}${S.sel ? " › " + a.rows.find(r => r[0] === S.sel)?.[1] : ""}` : `Site view · ${S.M.factory}`}</div>
-        <div className="rt-log" ref={logRef}>
+          <div className="adv-title"><b>AI Proc Advisory</b><span>{stateText[vs]} · {onScreen}</span></div>
+          {live && <button className="adv-icon" type="button" onClick={toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"} title={muted ? "Unmute" : "Mute"}>{muted ? "Unmute" : "Mute"}</button>}
+          <button className="adv-icon" type="button" onClick={() => setOpen(false)} aria-label="Minimise" title="Minimise">–</button>
+        </header>
+        {S.health && !S.health.voice && <KeyHelp h={S.health} />}
+        <div className="adv-log" ref={logRef}>
           {msgs.map(m => m.role === "tool" ? <div key={m.id} className="tool-call">↳ {m.text}</div> : m.role === "sys" ? <div key={m.id} className="msg sys"><span className="note">{m.text}</span></div> :
-            <div key={m.id} className={"msg " + m.role}>{m.role === "bot" ? (m.text ? <Markdown text={m.text} /> : <div className="thinking"><i />…</div>) : <>{m.text}{m.voice && <span className="note" style={{ color: "inherit", opacity: .7 }}> · voice</span>}</>}</div>)}
+            <div key={m.id} className={"msg " + m.role}>{m.role === "bot" ? (m.text ? <Markdown text={m.text} /> : <div className="thinking"><i />…</div>) : <>{m.text}{m.voice && <span style={{ opacity: .65 }}> · voice</span>}</>}</div>)}
         </div>
-        <div className="rt-chips">{chips.map(q => <button key={q} type="button" className="chip-btn" onClick={() => ask(q)}>{q}</button>)}</div>
-        <form className="rt-form" onSubmit={e => { e.preventDefault(); const q = input.trim(); if (q) { setInput(""); ask(q); } }}>
-          <label className="sr" htmlFor="rtIn">Type to RealTalk</label>
-          <textarea id="rtIn" rows={2} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.currentTarget.form as HTMLFormElement).requestSubmit(); } }} placeholder={live ? "Type into the live voice session…" : "Or type a question…"} />
-          <div className="rt-row"><span className="note">{live ? "Typed messages go into the voice session" : "Typed answers use OpenAI text + web search"}</span><span className="sp" />{busy && <button className="btn sm ghost" type="button" onClick={() => textCtl.current?.abort()}>Stop</button>}<button className="btn sm primary" type="submit">Send</button></div>
+        <div className="adv-chips">{chips.map(q => <button key={q} type="button" className="chip-btn" onClick={() => ask(q)}>{q}</button>)}</div>
+        <form className="adv-form" onSubmit={e => { e.preventDefault(); const q = input.trim(); if (q) { setInput(""); ask(q); } }}>
+          <label className="sr" htmlFor="rtIn">Ask AI Proc Advisory</label>
+          <input id="rtIn" value={input} onChange={e => setInput(e.target.value)} placeholder={live ? "Type into the voice session…" : "Ask about any package, part or step…"} />
+          {busy ? <button className="btn sm ghost" type="button" onClick={() => textCtl.current?.abort()}>Stop</button> : <button className="btn sm primary" type="submit">Send</button>}
         </form>
       </aside>
     )}
   </>);
+}
+
+function KeyHelp({ h }: { h: NonNullable<ReturnType<typeof useStudio>["health"]> }) {
+  const [check, setCheck] = useState<string>("");
+  const retry = async () => { setCheck("Checking…"); try { const j = await (await fetch("/api/health?check=1", { cache: "no-store" })).json(); if (j.voice) location.reload(); else setCheck("Still no key visible to the server."); } catch { setCheck("Couldn't reach /api/health."); } };
+  if (h.unreachable) return <div className="setup">Couldn't reach the Studio server (<code>/api/health</code>). Check the deployment is running, then reload.</div>;
+  const similar = (h.similarVars || []).length ? <> Found similar variables: <code>{h.similarVars!.join(", ")}</code>. Rename to <code>OPENAI_API_KEY</code> (never use a <code>NEXT_PUBLIC_</code> prefix for a secret).</> : null;
+  return (
+    <div className="setup">
+      {h.host === "vercel" ? <>
+        <b>This {h.vercelEnv || ""} deployment can't see <code>OPENAI_API_KEY</code>.</b> In Vercel → Settings → Environment Variables, check the name is exactly <code>OPENAI_API_KEY</code> and it's ticked for <b>{h.vercelEnv === "preview" ? "Preview" : "Production"}</b>. Then <b>Redeploy</b>: variables only reach new deployments.{similar}
+      </> : <>
+        Voice needs an OpenAI key. Put <code>OPENAI_API_KEY=sk-…</code> in <code>.env.local</code> in the project folder, then stop and restart <code>npm run dev</code>.{similar}
+      </>}
+      {" "}<button type="button" className="linkbtn" onClick={retry}>Check again</button>{check && <span className="note"> {check}</span>}
+    </div>
+  );
 }

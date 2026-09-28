@@ -79,7 +79,7 @@ function Asks({ qs, pid }: { qs: string[]; pid?: string }) {
   const S = useStudio(); const [q, setQ] = useState("");
   return (<>
     <div className="ask-row">{qs.map(x => <button key={x} type="button" className="chip-btn" onClick={() => S.rtAsk.current(x)}>{x}</button>)}</div>
-    {pid && <form className="askf" onSubmit={e => { e.preventDefault(); if (q.trim()) { S.rtAsk.current(q.trim()); setQ(""); } }}><label className="sr" htmlFor="askPart">Ask about this part</label><input id="askPart" value={q} onChange={e => setQ(e.target.value)} placeholder="Ask RealTalk about this part…" /><button className="btn sm primary" type="submit">Ask</button></form>}
+    {pid && <form className="askf" onSubmit={e => { e.preventDefault(); if (q.trim()) { S.rtAsk.current(q.trim()); setQ(""); } }}><label className="sr" htmlFor="askPart">Ask about this part</label><input id="askPart" value={q} onChange={e => setQ(e.target.value)} placeholder="Ask AI Proc Advisory about this part…" /><button className="btn sm primary" type="submit">Ask</button></form>}
   </>);
 }
 
