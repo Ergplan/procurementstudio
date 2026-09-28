@@ -396,3 +396,6 @@ tr.focus-flash td{background:var(--accent-soft)!important}
 .adv-title b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* keep highlighted content clear of the advisor card on wide screens */
 @media (min-width:1240px){body.adv-open .wrap{margin-right:392px;transition:margin .2s}}
+
+.fig-flash{outline:2px solid var(--accent);outline-offset:1px;background:var(--accent-soft)!important;border-radius:4px;transition:background .3s}
+td.fig-flash{outline-offset:-2px}

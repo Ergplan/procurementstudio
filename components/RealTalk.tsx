@@ -5,7 +5,7 @@ import { ASSETS, RESEARCH_DATE } from "@/lib/data";
 import { aName, aiContext, assetById, partInfo, portfolio } from "@/lib/calc";
 import { llm, errText, type Turn } from "@/lib/ai";
 import Markdown from "./Markdown";
-import { flash, SECTIONS, makeMatcher, assetFromText } from "@/lib/focus";
+import { flash, SECTIONS, assetFromText, makeScanner, flashEl, findFigure, inView, type Mention } from "@/lib/focus";
 
 type Msg = { id: number; role: "user" | "bot" | "sys" | "tool"; text: string; voice?: boolean };
 type VState = "off" | "connecting" | "listening" | "user" | "thinking" | "speaking";
@@ -35,7 +35,7 @@ export default function RealTalk() {
   const logRef = useRef<HTMLDivElement>(null);
   const Sref = useRef(S); Sref.current = S;
   const [follow, setFollow] = useState(true); const followRef = useRef(true); followRef.current = follow;
-  const lastFocus = useRef(""), followT = useRef<any>(null);
+  const lastFocus = useRef("");
   const focusTarget = (target: string, partId?: string, vendorName?: string) => {
     const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null; if (!a) return false;
     const vk = vendorName ? a.vendors.find(v => v.name.toLowerCase().includes(String(vendorName).toLowerCase().split(" ")[0]))?.key : undefined;
@@ -46,21 +46,64 @@ export default function RealTalk() {
     if (vk && target === "vendors") return flash(`[data-focus="vendor-${vk}"]`);
     const sec = SECTIONS[target]; return sec ? flash(`[data-focus="${sec}"]`, target === "walkthrough" || target === "analysis" ? "start" : "center") : false;
   };
-  // Passive follower: when the advisor (or the user) names a part, vendor or package, bring it on screen.
-  const followText = (text: string, who: "bot" | "user") => {
-    if (!followRef.current) return;
-    clearTimeout(followT.current);
-    followT.current = setTimeout(() => {
-      const s = Sref.current;
-      if (who === "user") { const id = assetFromText(text); if (id && id !== s.assetId && !/all (six|the) packages|portfolio|across/i.test(text)) { s.ctrl.current.openAsset(id); lastFocus.current = "asset-" + id; return; } }
-      if (!s.assetId) return;
-      const m = makeMatcher(assetById(s.assetId))(text.slice(-260));
-      let key = "", run: (() => void) | null = null;
-      if (m.part) { key = "part-" + m.part; run = () => { s.ctrl.current.showPart?.(m.part!); flash('[data-focus="sec-walk"]', "start"); }; }
-      else if (m.vendor) { key = `vendor-${m.vendor}-${m.about || ""}`; run = () => flash(m.about === "history" ? `[data-focus="hist-${m.vendor}"]` : m.about === "intel" ? `[data-focus="intel-${m.vendor}"]` : `[data-focus="vendor-${m.vendor}"]`); }
-      else if (m.about === "history") { key = "sec-history"; run = () => flash('[data-focus="sec-history"]', "start"); }
-      if (run && key !== lastFocus.current) { lastFocus.current = key; run(); }
-    }, who === "user" ? 150 : 450);
+  // ---- Synchronised narration: every part / vendor / figure / section the advisor mentions is
+  // highlighted at the moment it is spoken (estimated from when the audio started + speaking rate).
+  const nar = useRef({ start: null as number | null, cps: 15, timers: [] as any[], pending: [] as Mention[], done: new Set<string>(), lastKey: "", lastAt: 0, region: null as Element | null, len: 0, mode: "voice" as "voice" | "text" });
+  const scanners = useRef<Record<string, (t: string) => Mention[]>>({});
+  const narReset = (mode: "voice" | "text") => { nar.current.timers.forEach(clearTimeout); Object.assign(nar.current, { start: mode === "text" ? performance.now() : null, timers: [], pending: [], done: new Set<string>(), lastKey: "", len: 0, mode }); };
+  const applyMention = (m: Mention) => {
+    const s = Sref.current; if (!followRef.current || !s.assetId) return;
+    const a = assetById(s.assetId); const N = nar.current; const now = performance.now();
+    const key = m.kind === "figure" ? "fig-" + m.cands[0] : m.kind + "-" + (m as any).id + "-" + ((m as any).about || "");
+    if (key === N.lastKey && now - N.lastAt < 1500) return; N.lastKey = key; N.lastAt = now;
+    const q = (sel: string) => document.querySelector(sel) as HTMLElement | null;
+    if (m.kind === "part") {
+      if (s.sel !== m.id) s.ctrl.current.showPart?.(m.id);
+      const w = q('[data-focus="sec-walk"]'); if (w) { flashEl(w, "focus-flash", "ifNeeded", "start"); N.region = w; }
+      return;
+    }
+    if (m.kind === "vendor") {
+      const v = a.vendors.find(x => x.key === m.id)!; let el: HTMLElement | null = null;
+      if (m.about === "history") { el = q(`[data-focus="hist-${m.id}"]`); N.region = q('[data-focus="sec-history"]'); }
+      else if (m.about === "intel") { el = q(`[data-focus="intel-${m.id}"]`); N.region = q('[data-focus="sec-intel"]'); }
+      else if (N.region && inView(N.region) && N.region.matches('[data-focus="sec-walk"]') && Sref.current.sel) el = q(`[data-focus="offer-${m.id}"]`);
+      else if (N.region && inView(N.region)) el = findFigure([v.name], N.region);
+      if (!el) el = q(`[data-focus="vendor-${m.id}"]`);
+      if (el) flashEl(el, "focus-flash", "ifNeeded", "center");
+      return;
+    }
+    if (m.kind === "figure") { const el = findFigure(m.cands, N.region && inView(N.region) ? N.region : null); if (el) flashEl(el, "fig-flash", "ifNeeded", "center"); return; }
+    if (m.kind === "section") {
+      if (m.id === "tech") { s.setSel(null); const w = q('[data-focus="sec-walk"]'); if (w) { flashEl(w, "focus-flash", "ifNeeded", "start"); N.region = w; } return; }
+      const el = q(`[data-focus="${m.id}"]`); if (el) { flashEl(el, "focus-flash", "ifNeeded", "start"); N.region = el; }
+    }
+  };
+  const schedule = (m: Mention) => {
+    const N = nar.current;
+    if (N.start == null) { N.pending.push(m); return; }
+    const due = N.start + (m.at / N.cps) * 1000 - 200;
+    N.timers.push(setTimeout(() => applyMention(m), Math.max(0, due - performance.now())));
+  };
+  const narrate = (text: string, final = false) => {
+    const s = Sref.current; if (!followRef.current || !s.assetId) return;
+    const scan = (scanners.current[s.assetId] ||= makeScanner(assetById(s.assetId)));
+    const N = nar.current; N.len = text.length;
+    for (const m of scan(text)) {
+      if (!final && m.at > text.length - 14) continue; // the word may still be arriving
+      const k = m.kind + ":" + m.at; if (N.done.has(k)) continue; N.done.add(k); schedule(m);
+    }
+  };
+  const audioStarted = () => { const N = nar.current; N.start = performance.now(); const p = N.pending; N.pending = []; p.forEach(schedule); };
+  // learn the real speaking rate so later answers stay in sync
+  const audioStopped = () => { const N = nar.current; if (N.start && N.len > 40) { const secs = (performance.now() - N.start) / 1000; if (secs > 1.5) N.cps = Math.min(22, Math.max(10, 0.7 * N.cps + 0.3 * (N.len / secs))); } };
+  // What the USER says is applied immediately: switch package, or jump to the part/vendor named.
+  const followUser = (text: string) => {
+    if (!followRef.current) return; const s = Sref.current;
+    const id = assetFromText(text);
+    if (id && id !== s.assetId && !/all (six|the) packages|portfolio|across/i.test(text)) { s.ctrl.current.openAsset(id); return; }
+    if (!s.assetId) return;
+    const ms = (scanners.current[s.assetId] ||= makeScanner(assetById(s.assetId)))(text);
+    const m = ms.filter(x => x.kind !== "figure").pop(); if (m) applyMention(m);
   };
 
   const push = (m: Omit<Msg, "id">) => { const id = idc.current++; setMsgs(x => [...x, { ...m, id }]); return id; };
@@ -72,6 +115,7 @@ export default function RealTalk() {
     return `You are AI Proc Advisory, the spoken procurement advisor inside Joulewise Procurement Studio, talking with the CXO and procurement team of ${s.M.client} (${s.M.factory}, ${s.M.location}), an Indian snacks & bhujia manufacturer.
 Speak in short, clear Indian-English sentences (2-4 sentences per turn unless asked for detail). Use ₹ lakh and crore. Be numeric and decisive; say when evidence is thin.
 You can drive the screen: open_asset, show_part, walkthrough, set_view, go_to_site. When the user asks to see or go inside something ("take me inside the boiler", "show me the economiser", "next part"), call the tools first, then explain what is on screen. Whenever you move to a specific item, vendor or section in your answer (a BoQ line, a vendor's quote, the track record, the verdict), call show_part or focus so the screen follows you. Use run_analysis when the user asks for a brief, normalization, homogenized spec or a verdict.
+Speak so the screen can follow you: name parts exactly as the BoQ lines are called (e.g. "economiser", "combustion grate"), name vendors by name, and say amounts the way the screen shows them ("₹9.5 lakh", "₹1.21 crore", "87 percent", "10.54 kg/cm²"). Walk through one item at a time: part, then each vendor's offer, then the figure that matters.
 Each vendor has a track record with this client (past similar work, warranties honoured, annual plant satisfaction); weigh it alongside price and specs, and say when a vendor is new to us. Always call get_asset or get_portfolio before quoting numbers you don't already have.
 You also answer any question on the procurement process: RFQ, techno-commercial evaluation, L1 vs normalized N1, reverse auction, negotiation, PO terms (advance, ABG/PBG, LDs, warranty), IBR/CEIG/pollution-board approvals, GST and input tax credit, FAT/SAT, commissioning.
 Vendor bids are illustrative demo data; market benchmarks and vendor intel were web-researched on ${RESEARCH_DATE}.
@@ -101,13 +145,14 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
     switch (e.type) {
       case "input_audio_buffer.speech_started": setVs("user"); break;
       case "input_audio_buffer.speech_stopped": setVs("thinking"); break;
-      case "output_audio_buffer.started": setVs("speaking"); break;
-      case "output_audio_buffer.stopped": case "output_audio_buffer.cleared": setVs("listening"); break;
-      case "conversation.item.input_audio_transcription.completed": if (e.transcript?.trim()) { push({ role: "user", text: e.transcript.trim(), voice: true }); followText(e.transcript, "user"); } break;
+      case "output_audio_buffer.started": setVs("speaking"); audioStarted(); break;
+      case "output_audio_buffer.stopped": audioStopped(); setVs("listening"); break;
+      case "output_audio_buffer.cleared": nar.current.timers.forEach(clearTimeout); setVs("listening"); break;
+      case "conversation.item.input_audio_transcription.completed": if (e.transcript?.trim()) { push({ role: "user", text: e.transcript.trim(), voice: true }); followUser(e.transcript); } break;
       case "response.output_audio_transcript.delta": case "response.output_text.delta":
-        if (!cur.current) cur.current = { id: push({ role: "bot", text: "" }), text: "" };
-        cur.current.text += e.delta || ""; patch(cur.current.id, cur.current.text); followText(cur.current.text, "bot"); break;
-      case "response.output_audio_transcript.done": case "response.output_text.done": cur.current = null; lastFocus.current = ""; break;
+        if (!cur.current) { cur.current = { id: push({ role: "bot", text: "" }), text: "" }; narReset("voice"); }
+        cur.current.text += e.delta || ""; patch(cur.current.id, cur.current.text); narrate(cur.current.text); break;
+      case "response.output_audio_transcript.done": case "response.output_text.done": if (cur.current) narrate(cur.current.text, true); cur.current = null; break;
       case "response.done": {
         const calls = (e.response?.output || []).filter((o: any) => o.type === "function_call");
         if (!calls.length) break;
@@ -163,7 +208,7 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
   useEffect(() => { rtc.current?.send({ type: "session.update", session: { type: "realtime", instructions: instructions() } }); }, [S.assetId, S.sel, S.M]); // eslint-disable-line
 
   const ask = async (q: string) => {
-    setOpen(true); push({ role: "user", text: q }); followText(q, "user");
+    setOpen(true); push({ role: "user", text: q }); followUser(q);
     const r = rtc.current;
     if (r && r.dc.readyState === "open") { r.send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: q }] } }); r.send({ type: "response.create" }); return; }
     if (!Sref.current.health?.text) { push({ role: "sys", text: "The server can't see OPENAI_API_KEY yet. See the note at the top of this panel." }); return; }
@@ -171,9 +216,9 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
     const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null;
     const data = { portfolio: portfolio(s.M, s.reviews), focus_asset: a ? aiContext(a, s.M, s.disc, s.reviews) : null, focus_part: a && s.sel ? partInfo(a, s.sel) : null };
     turns.current.push({ role: "user", content: q });
-    const id = push({ role: "bot", text: "" });
+    const id = push({ role: "bot", text: "" }); narReset("text"); nar.current.cps = 32;
     try {
-      const t = await llm([{ role: "user", content: instructions() + "\nYou are answering in text now; keep it under 170 words and cite web sources as links if you search.\nStudio data: " + JSON.stringify(data) }, ...turns.current.slice(-10)], { web: !!s.health?.web, signal: ctl.signal, onText: x => { patch(id, x); followText(x, "bot"); } });
+      const t = await llm([{ role: "user", content: instructions() + "\nYou are answering in text now; keep it under 170 words and cite web sources as links if you search.\nStudio data: " + JSON.stringify(data) }, ...turns.current.slice(-10)], { web: !!s.health?.web, signal: ctl.signal, onText: x => { patch(id, x); narrate(x); } });
       turns.current.push({ role: "assistant", content: t });
     } catch (e: any) { turns.current.pop(); patch(id, e?.code === "cancelled" ? "_Stopped._" : "⚠ " + errText(e)); }
     finally { setBusy(false); }

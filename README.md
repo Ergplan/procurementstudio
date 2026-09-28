@@ -66,6 +66,8 @@ When the advisor, or you, names a package, a BoQ part, a vendor or a section, th
 - **Naming a part** selects it in the 3D view, brings up the part inspector and scrolls to it.
 - **Naming a vendor** highlights that vendor's card. If you're discussing warranties, satisfaction or past work, it highlights the vendor's track-record card instead.
 
+**Timed to the voice.** Each answer is scanned for every part, vendor, amount (₹ lakh/crore, percentages, scores, pressures) and section it mentions. Each highlight is scheduled for the moment that word is spoken, based on when the audio started and a speaking rate the app learns as it goes. You see the economiser light up in 3D, then each vendor's offer, then the amount, as the advisor says them. If you interrupt, the remaining highlights are cancelled.
+
 The advisor can also do this on purpose with the `focus` tool (vendors, walkthrough, tech sheet, a BoQ row, analysis, track record, intel, drawing). It can open a brief, normalization, homogenized spec or verdict with `run_analysis`. The **Follow** button in the advisor header turns auto-scrolling on or off.
 
 ## Vendor track record

@@ -103,9 +103,9 @@ function PartInspector({ asset: a, pid }: { asset: Asset; pid: string }) {
     <p>{info.about}</p>
     {info.check && <div className="checkbox"><span className="eyebrow">What to check</span><p>{info.check}</p></div>}
     <div className="offers">{a.vendors.map(v => { const cell = row.q[v.key];
-      if (!cell) return <div key={v.key} className="offer gapo"><b>{v.name}</b><span className="gap">Not quoted, loaded at {money(c.out[v.key].gaps.find(g => g.id === pid)!.fill)}</span></div>;
+      if (!cell) return <div key={v.key} className="offer gapo" data-focus={"offer-" + v.key}><b>{v.name}</b><span className="gap">Not quoted, loaded at {money(c.out[v.key].gaps.find(g => g.id === pid)!.fill)}</span></div>;
       const x = amt(cell)!, fl = benchFlag(row, cell, S.disc);
-      return <div key={v.key} className={"offer " + (x === mn && amts.length > 1 ? "best" : "")}><div><b>{v.name}</b><span className="note">{cell[0]} · {cell[1].toLocaleString("en-IN")} {row.unit} × {rate(cell[2])}</span></div><span className="num">{fl && <span className={"dot " + fl} />}{money(x)}</span></div>; })}</div>
+      return <div key={v.key} data-focus={"offer-" + v.key} className={"offer " + (x === mn && amts.length > 1 ? "best" : "")}><div><b>{v.name}</b><span className="note">{cell[0]} · {cell[1].toLocaleString("en-IN")} {row.unit} × {rate(cell[2])}</span></div><span className="num">{fl && <span className={"dot " + fl} />}{money(x)}</span></div>; })}</div>
     <p className="note">{b ? <>Market: <b className="num">{rate(b.lo)}–{rate(b.hi)}</b> per {row.unit}</> : "No market price discovered yet for this line."}</p>
     <Asks pid={pid} qs={["b1", "b7", "b8"].includes(pid) ? ["Which vendor's offer is best for our 10.5 kg/cm² working pressure?", "What could go wrong with this part?"] : ["Which vendor's offer is best here, and why?", "Is this line priced right?", "What should I ask vendors about this part?"]} />
   </>);
