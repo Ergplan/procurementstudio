@@ -1,6 +1,8 @@
 import { cfg } from "@/lib/server/config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Web-search answers can take a while; allow up to 5 minutes on Vercel (Fluid compute).
+export const maxDuration = 300;
 
 type Turn = { role: "user" | "assistant"; content: string };
 function turnsOf(input: string | Turn[]): Turn[] {
@@ -18,6 +20,9 @@ function turnsOf(input: string | Turn[]): Turn[] {
 export async function POST(req: Request) {
   if (!cfg.key) return Response.json({ error: "OPENAI_API_KEY is not set in .env.local" }, { status: 400 });
   const { input, web } = await req.json();
+  const size = JSON.stringify(input ?? "").length;
+  if (!input) return Response.json({ error: "Missing input" }, { status: 400 });
+  if (size > 200_000) return Response.json({ error: "Request too large" }, { status: 413 });
   const payload: any = { model: cfg.textModel, input: turnsOf(input), stream: true };
   if (web && cfg.web) payload.tools = [{ type: "web_search" }];
   const up = await fetch(`${cfg.base}/responses`, {

@@ -7,4 +7,5 @@ export const cfg = {
   voice: process.env.OPENAI_VOICE || "marin",
   transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe",
   web: (process.env.WEB_SEARCH || "on") !== "off",
+  password: process.env.STUDIO_PASSWORD || "",
 };

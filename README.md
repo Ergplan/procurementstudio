@@ -27,6 +27,24 @@ On a Mac you can instead double-click `start.command`. It installs packages on f
 
 For production, run `npm run build && npm start`.
 
+## Deploy on Vercel
+
+The app is ready for Vercel with no changes needed.
+
+1. Import `Ergplan/procurementstudio` in Vercel. The framework is detected as **Next.js**, and the build settings can stay at their defaults.
+2. Under **Settings → Environment Variables**, make sure `OPENAI_API_KEY` is set for Production (and Preview, if you use preview deployments). The optional variables in the table below go in the same place.
+3. **Protect the app.** Anyone who can open the URL can use your OpenAI credits. Do one of these:
+   - set `STUDIO_PASSWORD`, so the browser asks for a password (any username works); or
+   - turn on **Vercel Deployment Protection** (Settings → Deployment Protection).
+4. Deploy. Every push to `main` redeploys automatically.
+
+How it works on Vercel:
+
+- `/api/llm` streams answers and allows up to 300 s (`maxDuration`), so web-search answers aren't cut off. This needs Fluid compute, which is on by default for new projects. On the Hobby plan without Fluid, lower `maxDuration` in `app/api/llm/route.ts` to 60.
+- `/api/realtime/session` only mints the short-lived Realtime key. The voice audio then goes straight from the browser to OpenAI over WebRTC, so it never passes through a Vercel function and has no function time limit.
+- Your key is only read on the server. The browser receives a temporary `ek_…` key per voice session.
+- The microphone needs HTTPS. That's automatic on Vercel, and `localhost` also works.
+
 ## RealTalk voice
 
 Open **RealTalk** (bottom right), tap the orb and allow the microphone. Then just talk. You can interrupt it at any time.
@@ -63,7 +81,7 @@ lib/data.ts                         Packages, BoQ rows, vendors, intel, part not
 lib/calc.ts                         Normalization maths and AI data packs
 ```
 
-## Settings (`.env.local`)
+## Settings (`.env.local` locally, Environment Variables on Vercel)
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -73,6 +91,7 @@ lib/calc.ts                         Normalization maths and AI data packs
 | `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-mini-transcribe` | Shows your speech as text (set it empty to turn this off) |
 | `OPENAI_TEXT_MODEL` | `gpt-6-astra` | Briefs, verdicts, typed answers |
 | `WEB_SEARCH` | `on` | Live web search for prices and vendor checks |
+| `STUDIO_PASSWORD` | none | Optional password prompt for the whole app |
 
 ## Data
 

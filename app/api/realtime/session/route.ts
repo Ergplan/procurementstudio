@@ -1,6 +1,7 @@
 import { cfg } from "@/lib/server/config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 // Mints a short-lived OpenAI Realtime client secret. The browser then connects over WebRTC.
 export async function POST(req: Request) {
