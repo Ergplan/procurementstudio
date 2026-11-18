@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     instructions: String(instructions || "").slice(0, 60000),
     audio: {
       // semantic VAD waits for a finished thought instead of answering every pause or background noise
-      input: { turn_detection: { type: "semantic_vad" }, noise_reduction: { type: "near_field" } },
+      input: { turn_detection: { type: "semantic_vad" }, ...(cfg.noiseReduction !== "off" ? { noise_reduction: { type: cfg.noiseReduction } } : {}) },
       output: { voice: cfg.voice },
     },
   };

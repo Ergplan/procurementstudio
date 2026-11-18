@@ -119,6 +119,9 @@ components/VendorHistory.tsx        Track-record section and annual review form
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Voice model |
 | `OPENAI_VOICE` | `marin` | Voice |
 | `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-transcribe` | Shows your speech as text (set it empty to turn this off) |
+| `OPENAI_TRANSCRIBE_LANGUAGE` | `en` | Language of the speech transcript (set it empty to auto-detect) |
+| `OPENAI_REALTIME_REASONING` | `medium` | How hard the voice model thinks: `low`, `medium`, `high` or `off` |
+| `OPENAI_NOISE_REDUCTION` | `far_field` | Mic noise filter: `far_field` for a laptop or room mic, `near_field` for a headset, `off` |
 | `OPENAI_TEXT_MODEL` | `gpt-6-astra` | Briefs, verdicts, typed answers |
 | `WEB_SEARCH` | `on` | Live web search for prices and vendor checks |
 | `STUDIO_PASSWORD` | none | Optional password prompt for the whole app |

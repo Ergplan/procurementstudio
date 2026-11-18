@@ -17,6 +17,8 @@ export const cfg = {
   transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-transcribe",
   // Pinning the spoken language stops stray noise being transcribed as another language. "" = auto-detect.
   transcribeLang: process.env.OPENAI_TRANSCRIBE_LANGUAGE ?? "en",
+  // far_field suits a laptop or room mic with speakers (the demo set-up); near_field suits a headset. "off" disables it.
+  noiseReduction: process.env.OPENAI_NOISE_REDUCTION || "far_field",
   // How hard the voice model thinks before it speaks: low | medium | high, or "off".
   realtimeReasoning: process.env.OPENAI_REALTIME_REASONING || "medium",
   web: (process.env.WEB_SEARCH || "on") !== "off",

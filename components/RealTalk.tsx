@@ -23,6 +23,11 @@ const TOOLS = [
   { type: "function", name: "go_to_site", description: "Return to the isometric factory site view.", parameters: { type: "object", properties: {} } },
 ];
 
+// A real request has a few English words. Lone fragments ("He", "It.") and other-script text are what
+// the transcriber makes of room noise and nearby conversations, so they are not shown or acted on.
+const SHORT_OK = /^(yes|no|yeah|yep|nope|ok|okay|next|previous|back|stop|start|continue|go on|go ahead|repeat|sure|thanks|thank you|hello|hi|boiler|fryer|solar|extruder|packaging|packing|verdict|brief|normali[sz]e|homogeni[sz]e)\b/i;
+const isSpeech = (t: string) => { if (!t) return false; const latin = (t.match(/[a-z]/gi) || []).length, other = (t.match(/[^\x00-\x7F₹²]/g) || []).length; if (other > latin) return false; return t.split(/\s+/).length >= 3 || SHORT_OK.test(t); };
+
 export default function RealTalk() {
   const S = useStudio();
   const [open, setOpen] = useState(false);
@@ -30,6 +35,26 @@ export default function RealTalk() {
   const [vs, setVs] = useState<VState>("off");
   const [level, setLevel] = useState(0);
   const [muted, setMuted] = useState(false);
+  // Push-to-talk: the mic is only open while the Talk button (or Space) is held, so a noisy room,
+  // people talking nearby or the advisor's own voice from the speakers can never start a turn.
+  const [ptt, setPtt] = useState(true); const pttRef = useRef(true); pttRef.current = ptt;
+  const [talking, setTalking] = useState(false); const talkOff = useRef<any>(null);
+  useEffect(() => { try { const v = localStorage.getItem("ps.ptt"); if (v != null) setPtt(v === "1"); } catch {} }, []);
+  const micOn = (on: boolean) => rtc.current?.mic.getAudioTracks().forEach((t: MediaStreamTrack) => (t.enabled = on));
+  const talk = (on: boolean) => {
+    if (!rtc.current || !pttRef.current) return; clearTimeout(talkOff.current);
+    if (on) { micOn(true); setTalking(true); }
+    else talkOff.current = setTimeout(() => { micOn(false); setTalking(false); }, 350); // keep the tail of the last word
+  };
+  const setMode = (p: boolean) => { setPtt(p); try { localStorage.setItem("ps.ptt", p ? "1" : "0"); } catch {} clearTimeout(talkOff.current); setTalking(false); setMuted(false); micOn(!p); };
+  useEffect(() => {
+    const skip = (e: KeyboardEvent) => { const t = e.target as HTMLElement | null; return !rtc.current || !pttRef.current || e.code !== "Space" || !!t?.closest?.("input, textarea, select, canvas, [contenteditable]"); };
+    const down = (e: KeyboardEvent) => { if (skip(e)) return; e.preventDefault(); if (!e.repeat) talk(true); };
+    const up = (e: KeyboardEvent) => { if (skip(e)) return; e.preventDefault(); talk(false); };
+    const blur = () => talk(false);
+    addEventListener("keydown", down); addEventListener("keyup", up); addEventListener("blur", blur);
+    return () => { removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("blur", blur); };
+  }, []); // eslint-disable-line
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const rtc = useRef<any>(null), idc = useRef(1), cur = useRef<{ id: number; text: string } | null>(null), turns = useRef<Turn[]>([]), textCtl = useRef<AbortController | null>(null);
@@ -158,7 +183,7 @@ HOW TO RUN THE CONVERSATION
 1. Guided tour. If the user asks to be taken through the application, the product or the demo (or just greets you with no question): call go_to_site if a package is open, call get_portfolio, then give an overview in 5-6 sentences: what Procurement Studio does (compares vendor bids like-for-like, line by line against market prices; normalises for scope gaps, capacity and lifecycle cost; adds each vendor's track record with this plant and market reputation; lets you walk through the equipment in 3D; and ends in an award verdict), then the six packages open at this plant with one headline each. Then ASK which package they want to deep-dive, and stop. Do not open a package until they choose.
 2. Opening a package. When a package is first opened, orient in 2-3 sentences (how many bids, who is L1 and at what price, the spread, the single biggest issue), then offer three ways forward: walk through the equipment, compare the bids, or hear the verdict. Then follow the user's lead.
 3. Answering questions. Listen to the exact question and answer THAT, conclusion first. A simple fact (a price, a spec, who is L1, a warranty, a pre-computed key finding) you answer directly from the package data you hold. Anything that needs judgement or working out (compare, why, what if, is it worth it, risk, negotiation, which is best for our need, totals or percentages) you first say a short phrase such as "Let me work that out", call analyze with the full question, then give its answer in your own words. Never guess a number.
-4. Unclear speech. If you did not clearly understand, if the words are not a request to you, or it is only noise or a fragment, do NOT call any tool and do NOT change the screen: ask briefly what they would like. Never run an analysis panel the user did not ask for.
+4. Unclear speech. You may be in a busy room. If what you hear is background conversation, another language spoken to someone else, noise or a stray fragment, it is not for you: do NOT call any tool, do NOT change the screen, and say at most "Sorry, could you repeat that?" once. Only act on a clear request addressed to you. Never run an analysis panel the user did not ask for.
 5. Think like the head of procurement, not a reader of tables. Connect the facts: price against market, what is missing from scope, capacity and efficiency over the evaluation years, how the vendor has treated this plant before, and what that means for the award and for negotiation. Volunteer the one insight the user did not ask for but needs (for example that the cheapest quote is the costliest after normalisation). If the user's premise is wrong, say so politely and give the right figure.
 6. Remember the conversation: use what the user already told you (their priorities, a vendor they prefer or distrust, a budget) in later answers, and do not repeat what you have already said.
 7. End each answer with one short, relevant next step or question, not a list.
@@ -213,7 +238,7 @@ Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web,
       case "output_audio_buffer.started": setVs("speaking"); audioStarted(); break;
       case "output_audio_buffer.stopped": audioStopped(); setVs("listening"); break;
       case "output_audio_buffer.cleared": narClear(); nar.current.playing = false; setVs("listening"); break;
-      case "conversation.item.input_audio_transcription.completed": if (e.transcript?.trim()) { push({ role: "user", text: e.transcript.trim(), voice: true }); followUser(e.transcript); } break;
+      case "conversation.item.input_audio_transcription.completed": { const t = (e.transcript || "").trim(); if (isSpeech(t)) { push({ role: "user", text: t, voice: true }); followUser(t); } break; }
       case "response.output_audio_transcript.delta": case "response.output_text.delta":
         if (!cur.current) { cur.current = { id: push({ role: "bot", text: "" }), text: "" }; narReset("voice"); }
         cur.current.text += e.delta || ""; patch(cur.current.id, cur.current.text); narrate(cur.current.text); break;
@@ -246,6 +271,7 @@ Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web,
       const pc = new RTCPeerConnection();
       const audio = new Audio(); audio.autoplay = true; pc.ontrack = ev => { audio.srcObject = ev.streams[0]; };
       mic.getTracks().forEach(t => pc.addTrack(t, mic));
+      if (pttRef.current) mic.getAudioTracks().forEach(t => (t.enabled = false)); // closed until Talk is held
       const dc = pc.createDataChannel("oai-events");
       // mic level meter
       const ac = new AudioContext(); const an = ac.createAnalyser(); an.fftSize = 512; ac.createMediaStreamSource(mic).connect(an); const buf = new Uint8Array(an.fftSize);
@@ -265,6 +291,7 @@ Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web,
   const stop = () => {
     const r = rtc.current; rtc.current = null; cur.current = null; narClear(); nar.current.playing = false;
     if (r) { try { r.stopMeter(); r.mic.getTracks().forEach((t: MediaStreamTrack) => t.stop()); r.dc.close(); r.pc.close(); r.ac.close(); r.audio.srcObject = null; } catch {} }
+    clearTimeout(talkOff.current); setTalking(false);
     setVs("off"); setLevel(0); setMuted(false);
   };
   useEffect(() => () => stop(), []); // eslint-disable-line
@@ -294,7 +321,7 @@ Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web,
   S.rtAsk.current = ask;
 
   const a = S.assetId ? assetById(S.assetId) : null;
-  const stateText: Record<VState, string> = { off: "Tap the mic to talk", connecting: "Connecting…", listening: "Listening", user: "You're speaking", thinking: "Thinking…", speaking: "Speaking · talk to interrupt" };
+  const stateText: Record<VState, string> = { off: "Tap the mic to talk", connecting: "Connecting…", listening: ptt ? (talking ? "Listening…" : "Hold Talk or Space to speak") : "Listening", user: "You're speaking", thinking: "Thinking…", speaking: ptt ? "Speaking · hold Talk to interrupt" : "Speaking · talk to interrupt" };
   const live = vs !== "off" && vs !== "connecting";
   const onScreen = a ? `${aName(a, S.M)}${S.sel ? " › " + a.rows.find(r => r[0] === S.sel)?.[1] : ""}` : `Site view`;
   const chips = a ? [a.id === "boiler" ? "Take me inside the furnace" : "Start the walkthrough", "Which bid should we award?", "What should we negotiate?"] : ["Take me inside the boiler", "Biggest saving across packages?", "RFQ to commissioning timeline"];
@@ -312,7 +339,8 @@ Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web,
           </button>
           <div className="adv-title"><b>AI Proc Advisory</b><span>{stateText[vs]} · {onScreen}</span></div>
           <button className={"adv-icon" + (follow ? " on" : "")} type="button" onClick={() => setFollow(!follow)} aria-pressed={follow} title="Scroll the screen to whatever the advisor is talking about">Follow</button>
-          {live && <button className="adv-icon" type="button" onClick={toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"} title={muted ? "Unmute" : "Mute"}>{muted ? "Unmute" : "Mute"}</button>}
+          <button className={"adv-icon" + (ptt ? " on" : "")} type="button" onClick={() => setMode(!ptt)} aria-pressed={ptt} title={ptt ? "Push-to-talk: the mic only listens while you hold Talk or Space. Click for hands-free." : "Hands-free: the mic is always listening. Click for push-to-talk (best in a noisy room)."}>{ptt ? "Push-to-talk" : "Hands-free"}</button>
+          {live && !ptt && <button className="adv-icon" type="button" onClick={toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"} title={muted ? "Unmute" : "Mute"}>{muted ? "Unmute" : "Mute"}</button>}
           <button className="adv-icon" type="button" onClick={() => setOpen(false)} aria-label="Minimise" title="Minimise">–</button>
         </header>
         {S.health && !S.health.voice && <KeyHelp h={S.health} />}
@@ -320,6 +348,9 @@ Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web,
           {msgs.map(m => m.role === "tool" ? <div key={m.id} className="tool-call">↳ {m.text}</div> : m.role === "sys" ? <div key={m.id} className="msg sys"><span className="note">{m.text}</span></div> :
             <div key={m.id} className={"msg " + m.role}>{m.role === "bot" ? (m.text ? <Markdown text={m.text} /> : <div className="thinking"><i />…</div>) : <>{m.text}{m.voice && <span style={{ opacity: .65 }}> · voice</span>}</>}</div>)}
         </div>
+        {live && ptt && <div style={{ padding: "8px 12px" }}><button type="button" className={"btn " + (talking ? "accent" : "primary")} style={{ width: "100%", touchAction: "none", userSelect: "none" }}
+          onPointerDown={e => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); talk(true); }} onPointerUp={() => talk(false)} onPointerCancel={() => talk(false)} onContextMenu={e => e.preventDefault()}
+          aria-pressed={talking}>{talking ? "Listening… release when done" : "Hold to talk  ·  or hold Space"}</button></div>}
         <div className="adv-chips">{chips.map(q => <button key={q} type="button" className="chip-btn" onClick={() => ask(q)}>{q}</button>)}</div>
         <form className="adv-form" onSubmit={e => { e.preventDefault(); const q = input.trim(); if (q) { setInput(""); ask(q); } }}>
           <label className="sr" htmlFor="rtIn">Ask AI Proc Advisory</label>
