@@ -19,12 +19,13 @@ function turnsOf(input: string | Turn[]): Turn[] {
 // Streams plain text deltas from the OpenAI Responses API (optionally with live web search).
 export async function POST(req: Request) {
   if (!cfg.key) return Response.json({ error: "OPENAI_API_KEY is not set in .env.local" }, { status: 400 });
-  const { input, web } = await req.json();
+  const { input, web, effort } = await req.json();
   const size = JSON.stringify(input ?? "").length;
   if (!input) return Response.json({ error: "Missing input" }, { status: 400 });
   if (size > 200_000) return Response.json({ error: "Request too large" }, { status: 413 });
   const payload: any = { model: cfg.textModel, input: turnsOf(input), stream: true };
   if (web && cfg.web) payload.tools = [{ type: "web_search" }];
+  if (["low", "medium", "high"].includes(effort)) payload.reasoning = { effort };
   const up = await fetch(`${cfg.base}/responses`, {
     method: "POST",
     headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },

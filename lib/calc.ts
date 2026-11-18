@@ -56,6 +56,25 @@ export function compute(a: Asset, M: Master): Comp {
 }
 
 // ---- compact data packs for the AI
+// Deterministic findings the advisor can state without working them out (and cannot get wrong).
+export function findings(a: Asset, M: Master, disc: Disc = {}, reviews: Record<string, Review[]> = {}): string[] {
+  const c = compute(a, M), f: string[] = [];
+  const l1 = c.out[c.byQuoted[0]], n1 = c.out[c.byNorm[0]], hi = c.out[c.byQuoted[c.byQuoted.length - 1]];
+  f.push(`L1 on quoted price is ${l1.v.name} at ${money(l1.quoted)} ex-GST; highest is ${hi.v.name} at ${money(hi.quoted)} (spread ${((hi.quoted / l1.quoted - 1) * 100).toFixed(0)}%).`);
+  f.push(n1.v.key === l1.v.key ? `${l1.v.name} is also lowest after normalisation (${money(n1.norm)}).` : `After normalisation the order flips: ${n1.v.name} is lowest at ${money(n1.norm)}, while quoted-L1 ${l1.v.name} rises to ${money(l1.norm)} (rank ${c.byNorm.indexOf(l1.v.key) + 1} of ${a.vendors.length}).`);
+  a.vendors.forEach(v => {
+    const o = c.out[v.key];
+    if (o.gaps.length) f.push(`${v.name} did not quote ${o.gaps.map(g => g.item).join("; ")}: ${money(o.gapLoad)} loaded for scope.`);
+    if (Math.abs(o.capF - 1) > 0.02) f.push(`${v.name} offers ${v.cap.toLocaleString("en-IN")} ${a.capUnit} against ${a.req.cap.toLocaleString("en-IN")} required: capacity factor ${o.capF.toFixed(2)}.`);
+    if (o.lcDelta > 0) f.push(`${v.name} costs ${money(o.lcDelta)} more than the best bid over ${M.years} years on ${a.lifecycle?.type === "fuel" ? "fuel" : "lost energy"}.`);
+    const above = c.rows.filter(r => benchFlag(r, r.q[v.key], disc) === "bad").map(r => r.item), below = c.rows.filter(r => benchFlag(r, r.q[v.key], disc) === "warn").map(r => r.item);
+    if (above.length) f.push(`${v.name} is above the market range on: ${above.join("; ")}.`);
+    if (below.length) f.push(`${v.name} is below the market range (check scope/spec) on: ${below.join("; ")}.`);
+    const t = trackScore(mergedHistory(v.name, reviews));
+    f.push(t ? `${v.name} track record with us: ${t.score}/100, ${t.honored} of ${t.claims} warranty claims honoured, satisfaction ${t.satisfaction.toFixed(1)}/10.` : `${v.name} is new to us: no track record.`);
+  });
+  return f;
+}
 export function trackFor(name: string, reviews: Record<string, Review[]> = {}) {
   const h = mergedHistory(name, reviews), t = trackScore(h);
   if (!t) return { past_work_with_us: "none (new vendor)" };
@@ -65,7 +84,7 @@ export function aiContext(a: Asset, M: Master, disc: Disc, reviews: Record<strin
   const c = compute(a, M);
   return {
     factory: M.factory, client: M.client + " (snacks & bhujia manufacturer, India)", asset: aName(a, M), requirement: a.req.text,
-    market_note: a.marketNote, research_date: RESEARCH_DATE,
+    market_note: a.marketNote, research_date: RESEARCH_DATE, key_findings: findings(a, M, disc, reviews),
     assumptions: a.lifecycle ? (a.lifecycle.type === "fuel" ? { fuel_price_per_t: M.fuelPrice, gcv: M.gcv, hours: M.hours, load: M.load, years: M.years } : { tariff: M.tariff, years: M.years }) : undefined,
     vendors: a.vendors.map(v => {
       const o = c.out[v.key];

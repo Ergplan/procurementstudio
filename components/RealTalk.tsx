@@ -157,9 +157,11 @@ Speak in short, clear Indian-English sentences (2-4 sentences per turn unless as
 HOW TO RUN THE CONVERSATION
 1. Guided tour. If the user asks to be taken through the application, the product or the demo (or just greets you with no question): call go_to_site if a package is open, call get_portfolio, then give an overview in 5-6 sentences: what Procurement Studio does (compares vendor bids like-for-like, line by line against market prices; normalises for scope gaps, capacity and lifecycle cost; adds each vendor's track record with this plant and market reputation; lets you walk through the equipment in 3D; and ends in an award verdict), then the six packages open at this plant with one headline each. Then ASK which package they want to deep-dive, and stop. Do not open a package until they choose.
 2. Opening a package. When a package is first opened, orient in 2-3 sentences (how many bids, who is L1 and at what price, the spread, the single biggest issue), then offer three ways forward: walk through the equipment, compare the bids, or hear the verdict. Then follow the user's lead.
-3. Answering questions. Listen to the exact question and answer THAT, conclusion first. A simple fact (a price, a spec, who is L1, a warranty) you answer directly from get_asset data. Anything that needs judgement or working out (compare, why, what if, is it worth it, risk, negotiation, which is best for our need, totals or percentages) you first say a short phrase such as "Let me work that out", call analyze with the full question, then give its answer in your own words. Never guess a number.
+3. Answering questions. Listen to the exact question and answer THAT, conclusion first. A simple fact (a price, a spec, who is L1, a warranty, a pre-computed key finding) you answer directly from the package data you hold. Anything that needs judgement or working out (compare, why, what if, is it worth it, risk, negotiation, which is best for our need, totals or percentages) you first say a short phrase such as "Let me work that out", call analyze with the full question, then give its answer in your own words. Never guess a number.
 4. Unclear speech. If you did not clearly understand, if the words are not a request to you, or it is only noise or a fragment, do NOT call any tool and do NOT change the screen: ask briefly what they would like. Never run an analysis panel the user did not ask for.
-5. End each answer with one short, relevant next step or question, not a list.
+5. Think like the head of procurement, not a reader of tables. Connect the facts: price against market, what is missing from scope, capacity and efficiency over the evaluation years, how the vendor has treated this plant before, and what that means for the award and for negotiation. Volunteer the one insight the user did not ask for but needs (for example that the cheapest quote is the costliest after normalisation). If the user's premise is wrong, say so politely and give the right figure.
+6. Remember the conversation: use what the user already told you (their priorities, a vendor they prefer or distrust, a budget) in later answers, and do not repeat what you have already said.
+7. End each answer with one short, relevant next step or question, not a list.
 
 You can drive the screen: open_asset, show_part, walkthrough, set_view, focus, run_analysis, go_to_site. ALWAYS call open_asset before you talk about a package that is not the one on screen. When the user asks to see or go inside something ("take me inside the boiler", "show me the economiser", "next part"), call the tools first, then explain what is on screen. Use run_analysis when the user asks for a brief, normalization, homogenized spec or a verdict.
 The screen follows your words by itself: each part, vendor and figure is highlighted as you say it. So do NOT call focus or show_part for every item you mention. Call focus only when you deliberately change section (BoQ table, track record, vendor intel, analysis), then stay in that section for the whole answer.
@@ -168,7 +170,9 @@ Each vendor has a track record with this client (past similar work, warranties h
 You also answer any question on the procurement process: RFQ, techno-commercial evaluation, L1 vs normalized N1, reverse auction, negotiation, PO terms (advance, ABG/PBG, LDs, warranty), IBR/CEIG/pollution-board approvals, GST and input tax credit, FAT/SAT, commissioning.
 Vendor bids are illustrative demo data; market benchmarks and vendor intel were web-researched on ${RESEARCH_DATE}.
 Packages: ${ASSETS.map(x => `${x.id} = ${aName(x, s.M)} (${x.req.capLabel})`).join("; ")}.
-On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(r => r[0] === s.sel)?.[1]})` : ""}. Parts: ${a.rows.map(r => `${r[0]}=${r[1]}`).join("; ")}` : "the factory site view"}.`;
+On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(r => r[0] === s.sel)?.[1]})` : ""}. Parts: ${a.rows.map(r => `${r[0]}=${r[1]}`).join("; ")}` : "the factory site view"}.
+ALL SIX PACKAGES (computed by the Studio; use these numbers as they are): ${JSON.stringify(portfolio(s.M, s.reviews))}
+${a ? `FULL DATA FOR THE PACKAGE ON SCREEN (${aName(a, s.M)}). You already have everything below, so answer facts from it at once without calling get_asset; key_findings are pre-computed and reliable: ${JSON.stringify(aiContext(a, s.M, s.disc, s.reviews))}` : "No package is open; call get_asset when you need one package's line-by-line detail."}`;
   };
 
   const runTool = async (name: string, args: any) => {
@@ -187,11 +191,11 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
       if (name === "analyze") {
         const a = ASSETS.find(x => x.id === args.asset_id) || (s.assetId ? assetById(s.assetId) : null);
         const data = { portfolio: portfolio(s.M, s.reviews), focus_asset: a ? aiContext(a, s.M, s.disc, s.reviews) : null, focus_part: a && s.sel && a.id === s.assetId ? partInfo(a, s.sel) : null };
-        const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 60000);
+        const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 90000);
         try {
           const t = await llm(`You are the senior procurement analyst behind the voice advisor of ${s.M.client} (${s.M.factory}), an Indian snacks & bhujia manufacturer. Think the question through carefully using the Studio data${args.use_web ? " and a web search" : ""}; do the arithmetic yourself and check it. Then answer for speaking aloud: the conclusion first, then the 2-4 numbers or facts that prove it, then one caveat only if it matters. Maximum 120 words, plain sentences, no markdown, ₹ in lakh/crore, and name BoQ parts and vendors exactly as in the data. Do not invent numbers; say so if the data cannot answer it. Vendor bids are illustrative demo data.
 Question: ${String(args.question || "")}
-Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web, signal: ctl.signal });
+Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web, effort: "high", signal: ctl.signal });
           return { answer: t };
         } catch (e: any) { return { error: "The analyst could not answer (" + errText(e) + "). Answer from get_asset data instead and say the evidence is thin." }; }
         finally { clearTimeout(to); }
@@ -268,7 +272,7 @@ Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web,
   const toggleMute = () => { const r = rtc.current; if (!r) return; const m = !muted; r.mic.getAudioTracks().forEach((t: MediaStreamTrack) => (t.enabled = !m)); setMuted(m); };
 
   // keep the live session aware of what's on screen
-  useEffect(() => { rtc.current?.send({ type: "session.update", session: { type: "realtime", instructions: instructions() } }); }, [S.assetId, S.sel, S.M]); // eslint-disable-line
+  useEffect(() => { rtc.current?.send({ type: "session.update", session: { type: "realtime", instructions: instructions() } }); }, [S.assetId, S.sel, S.M, S.reviews, S.disc]); // eslint-disable-line
 
   const ask = async (q: string) => {
     setOpen(true); push({ role: "user", text: q }); followUser(q);

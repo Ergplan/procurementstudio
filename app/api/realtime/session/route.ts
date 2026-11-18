@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const session: any = {
     type: "realtime",
     model: cfg.realtimeModel,
-    instructions: String(instructions || "").slice(0, 24000),
+    instructions: String(instructions || "").slice(0, 60000),
     audio: {
       // semantic VAD waits for a finished thought instead of answering every pause or background noise
       input: { turn_detection: { type: "semantic_vad" }, noise_reduction: { type: "near_field" } },
