@@ -118,7 +118,7 @@ components/VendorHistory.tsx        Track-record section and annual review form
 | `OPENAI_API_KEY` | none | Required. `OPENAI_API_KEY1` also works |
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Voice model |
 | `OPENAI_VOICE` | `marin` | Voice |
-| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-mini-transcribe` | Shows your speech as text (set it empty to turn this off) |
+| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-transcribe` | Shows your speech as text (set it empty to turn this off) |
 | `OPENAI_TEXT_MODEL` | `gpt-6-astra` | Briefs, verdicts, typed answers |
 | `WEB_SEARCH` | `on` | Live web search for prices and vendor checks |
 | `STUDIO_PASSWORD` | none | Optional password prompt for the whole app |

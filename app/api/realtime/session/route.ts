@@ -11,15 +11,24 @@ export async function POST(req: Request) {
     type: "realtime",
     model: cfg.realtimeModel,
     instructions: String(instructions || "").slice(0, 24000),
-    audio: { input: { turn_detection: { type: "server_vad" } }, output: { voice: cfg.voice } },
+    audio: {
+      // semantic VAD waits for a finished thought instead of answering every pause or background noise
+      input: { turn_detection: { type: "semantic_vad" }, noise_reduction: { type: "near_field" } },
+      output: { voice: cfg.voice },
+    },
   };
-  if (cfg.transcribeModel) session.audio.input.transcription = { model: cfg.transcribeModel };
+  if (cfg.transcribeModel) session.audio.input.transcription = { model: cfg.transcribeModel, ...(cfg.transcribeLang ? { language: cfg.transcribeLang } : {}) };
   if (Array.isArray(tools)) session.tools = tools;
-  const up = await fetch(`${cfg.base}/realtime/client_secrets`, {
+  const reasoning = cfg.realtimeReasoning !== "off";
+  if (reasoning) session.reasoning = { effort: cfg.realtimeReasoning };
+  const mint = () => fetch(`${cfg.base}/realtime/client_secrets`, {
     method: "POST",
     headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ session }),
   });
+  let up = await mint();
+  // Some voice models (e.g. gpt-live-1) reject the reasoning option: retry without it.
+  if (up.status === 400 && reasoning) { delete session.reasoning; up = await mint(); }
   const j: any = await up.json().catch(() => ({}));
   if (!up.ok || !j.value) return Response.json({ error: `Realtime ${up.status}: ${JSON.stringify(j.error || j).slice(0, 400)}` }, { status: 502 });
   return Response.json({ value: j.value, model: cfg.realtimeModel, callsUrl: `${cfg.base}/realtime/calls` });

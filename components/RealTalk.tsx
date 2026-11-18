@@ -19,6 +19,7 @@ const TOOLS = [
   { type: "function", name: "get_portfolio", description: "Summary of all six packages: vendors, quoted and normalized totals, ranks, scope gaps and risk flags.", parameters: { type: "object", properties: {} } },
   { type: "function", name: "focus", description: "Scroll the screen to and highlight what you are talking about. target: vendors | walkthrough | tech_sheet | boq | boq_row | analysis | track_record | vendor_intel | drawing. For boq_row give part_id; to highlight one vendor give vendor_name (works with vendors, track_record, vendor_intel).", parameters: { type: "object", properties: { target: { type: "string", enum: ["vendors", "walkthrough", "tech_sheet", "boq", "boq_row", "analysis", "track_record", "vendor_intel", "drawing"] }, part_id: { type: "string" }, vendor_name: { type: "string" } }, required: ["target"] } },
   { type: "function", name: "run_analysis", description: "Run and show an analysis panel for the open asset: brief (CXO pricing brief), normalize (like-for-like comparison table), homogenize (common spec + best BoQ mix) or verdict (award recommendation).", parameters: { type: "object", properties: { kind: { type: "string", enum: ["brief", "normalize", "homogenize", "verdict"] } }, required: ["kind"] } },
+  { type: "function", name: "analyze", description: "Hand a question that needs real thinking to the senior analyst (a stronger reasoning model with all Studio data): comparisons, 'why', 'what if', calculations, risk, negotiation strategy, which vendor is best for a need. Returns a worked answer for you to speak. Takes a few seconds, so first say a short phrase like 'Let me work that out'. Set use_web true only if the user asks for current market or news information.", parameters: { type: "object", properties: { question: { type: "string", description: "The user's question, complete and self-contained" }, asset_id: { type: "string", enum: ASSETS.map(a => a.id) }, use_web: { type: "boolean" } }, required: ["question"] } },
   { type: "function", name: "go_to_site", description: "Return to the isometric factory site view.", parameters: { type: "object", properties: {} } },
 ];
 
@@ -151,7 +152,15 @@ export default function RealTalk() {
   const instructions = () => {
     const s = Sref.current, a = s.assetId ? assetById(s.assetId) : null;
     return `You are AI Proc Advisory, the spoken procurement advisor inside Joulewise Procurement Studio, talking with the CXO and procurement team of ${s.M.client} (${s.M.factory}, ${s.M.location}), an Indian snacks & bhujia manufacturer.
-Speak in short, clear Indian-English sentences (2-4 sentences per turn unless asked for detail). Use ₹ lakh and crore. Be numeric and decisive; say when evidence is thin.
+Speak in short, clear Indian-English sentences (2-4 sentences per turn unless asked for detail). Use ₹ lakh and crore. Be numeric and decisive; say when evidence is thin. Always reply in English unless the user clearly speaks Hindi.
+
+HOW TO RUN THE CONVERSATION
+1. Guided tour. If the user asks to be taken through the application, the product or the demo (or just greets you with no question): call go_to_site if a package is open, call get_portfolio, then give an overview in 5-6 sentences: what Procurement Studio does (compares vendor bids like-for-like, line by line against market prices; normalises for scope gaps, capacity and lifecycle cost; adds each vendor's track record with this plant and market reputation; lets you walk through the equipment in 3D; and ends in an award verdict), then the six packages open at this plant with one headline each. Then ASK which package they want to deep-dive, and stop. Do not open a package until they choose.
+2. Opening a package. When a package is first opened, orient in 2-3 sentences (how many bids, who is L1 and at what price, the spread, the single biggest issue), then offer three ways forward: walk through the equipment, compare the bids, or hear the verdict. Then follow the user's lead.
+3. Answering questions. Listen to the exact question and answer THAT, conclusion first. A simple fact (a price, a spec, who is L1, a warranty) you answer directly from get_asset data. Anything that needs judgement or working out (compare, why, what if, is it worth it, risk, negotiation, which is best for our need, totals or percentages) you first say a short phrase such as "Let me work that out", call analyze with the full question, then give its answer in your own words. Never guess a number.
+4. Unclear speech. If you did not clearly understand, if the words are not a request to you, or it is only noise or a fragment, do NOT call any tool and do NOT change the screen: ask briefly what they would like. Never run an analysis panel the user did not ask for.
+5. End each answer with one short, relevant next step or question, not a list.
+
 You can drive the screen: open_asset, show_part, walkthrough, set_view, focus, run_analysis, go_to_site. ALWAYS call open_asset before you talk about a package that is not the one on screen. When the user asks to see or go inside something ("take me inside the boiler", "show me the economiser", "next part"), call the tools first, then explain what is on screen. Use run_analysis when the user asks for a brief, normalization, homogenized spec or a verdict.
 The screen follows your words by itself: each part, vendor and figure is highlighted as you say it. So do NOT call focus or show_part for every item you mention. Call focus only when you deliberately change section (BoQ table, track record, vendor intel, analysis), then stay in that section for the whole answer.
 Speak so the screen can follow you: name parts exactly as the BoQ lines are called (e.g. "economiser", "combustion grate"), name vendors by name, and say amounts the way the screen shows them ("₹9.5 lakh", "₹1.21 crore", "87 percent", "10.54 kg/cm²"). Take one item at a time and finish it before the next: the part, then each vendor's offer for it, then the figure that matters. Do not hop between parts, or between the BoQ and the track record, inside one sentence.
@@ -175,6 +184,18 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
       if (name === "get_portfolio") return portfolio(s.M, s.reviews);
       if (name === "focus") { if (!s.assetId) return { error: "open an asset first" }; return focusTarget(String(args.target), args.part_id, args.vendor_name) ? { ok: true } : { error: "nothing to focus for that target" }; }
       if (name === "run_analysis") { if (!s.assetId) return { error: "open an asset first" }; const k = ({ brief: "brief", normalize: "norm", homogenize: "homog", verdict: "verdict" } as any)[args.kind]; if (!k) return { error: "unknown kind" }; ctrl.runAi?.(k); setTimeout(() => anchor(q('[data-focus="sec-ai"]')), 400); return { ok: true, note: "The panel is now generating on screen; summarise it briefly while it loads, or ask get_asset for numbers." }; }
+      if (name === "analyze") {
+        const a = ASSETS.find(x => x.id === args.asset_id) || (s.assetId ? assetById(s.assetId) : null);
+        const data = { portfolio: portfolio(s.M, s.reviews), focus_asset: a ? aiContext(a, s.M, s.disc, s.reviews) : null, focus_part: a && s.sel && a.id === s.assetId ? partInfo(a, s.sel) : null };
+        const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 60000);
+        try {
+          const t = await llm(`You are the senior procurement analyst behind the voice advisor of ${s.M.client} (${s.M.factory}), an Indian snacks & bhujia manufacturer. Think the question through carefully using the Studio data${args.use_web ? " and a web search" : ""}; do the arithmetic yourself and check it. Then answer for speaking aloud: the conclusion first, then the 2-4 numbers or facts that prove it, then one caveat only if it matters. Maximum 120 words, plain sentences, no markdown, ₹ in lakh/crore, and name BoQ parts and vendors exactly as in the data. Do not invent numbers; say so if the data cannot answer it. Vendor bids are illustrative demo data.
+Question: ${String(args.question || "")}
+Studio data: ${JSON.stringify(data)}`, { web: !!args.use_web && !!s.health?.web, signal: ctl.signal });
+          return { answer: t };
+        } catch (e: any) { return { error: "The analyst could not answer (" + errText(e) + "). Answer from get_asset data instead and say the evidence is thin." }; }
+        finally { clearTimeout(to); }
+      }
       if (name === "go_to_site") { ctrl.goSite(); anchor(null); return { ok: true }; }
     } catch (e: any) { return { error: String(e?.message || e) }; }
     return { error: "unknown tool" };
@@ -198,8 +219,10 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
         if (!calls.length) break;
         for (const c of calls) {
           let args: any = {}; try { args = JSON.parse(c.arguments || "{}"); } catch {}
-          push({ role: "tool", text: `${c.name}(${Object.values(args).join(", ")})` });
+          push({ role: "tool", text: `${c.name}(${Object.values(args).map(v => String(v).slice(0, 70)).join(", ")})` });
+          if (c.name === "analyze") setVs("thinking");
           const out = await runTool(c.name, args);
+          if (rtc.current !== r) return; // the session ended while a tool was running
           r.send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: c.call_id, output: JSON.stringify(out).slice(0, 30000) } });
         }
         r.send({ type: "session.update", session: { type: "realtime", instructions: instructions() } });
@@ -258,7 +281,7 @@ On screen now: ${a ? `${aName(a, s.M)}${s.sel ? `, part ${s.sel} (${a.rows.find(
     turns.current.push({ role: "user", content: q });
     const id = push({ role: "bot", text: "" }); narReset("text");
     try {
-      const t = await llm([{ role: "user", content: instructions() + "\nYou are answering in text now; keep it under 170 words and cite web sources as links if you search.\nStudio data: " + JSON.stringify(data) }, ...turns.current.slice(-10)], { web: !!s.health?.web, signal: ctl.signal, onText: x => { patch(id, x); narrate(x); } });
+      const t = await llm([{ role: "user", content: instructions() + "\nYou are answering in TEXT now and have no tools here: all the data is below, so think the answer through yourself (never say \"let me work that out\" or mention calling anything). The screen follows your words by itself and opens a package when you name it, so never say you cannot change the screen. Keep it under 170 words and cite web sources as links if you search.\nStudio data: " + JSON.stringify(data) }, ...turns.current.slice(-10)], { web: !!s.health?.web, signal: ctl.signal, onText: x => { patch(id, x); narrate(x); } });
       narrate(t, true);
       turns.current.push({ role: "assistant", content: t });
     } catch (e: any) { turns.current.pop(); narClear(); patch(id, e?.code === "cancelled" ? "_Stopped._" : "⚠ " + errText(e)); }

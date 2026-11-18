@@ -14,7 +14,11 @@ export const cfg = {
   textModel: process.env.OPENAI_TEXT_MODEL || "gpt-6-astra",
   realtimeModel: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
   voice: process.env.OPENAI_VOICE || "marin",
-  transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe",
+  transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-transcribe",
+  // Pinning the spoken language stops stray noise being transcribed as another language. "" = auto-detect.
+  transcribeLang: process.env.OPENAI_TRANSCRIBE_LANGUAGE ?? "en",
+  // How hard the voice model thinks before it speaks: low | medium | high, or "off".
+  realtimeReasoning: process.env.OPENAI_REALTIME_REASONING || "medium",
   web: (process.env.WEB_SEARCH || "on") !== "off",
   password: process.env.STUDIO_PASSWORD || "",
   host: process.env.VERCEL ? "vercel" : "local",
